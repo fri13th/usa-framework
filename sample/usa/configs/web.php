@@ -288,67 +288,7 @@ class FlatPaginate extends BasePaginate {
 
 }
 
-abstract class BcPaginate extends BasePaginate {
 
-    function setTotalCount($totalCount) {
-        $this->totalCount = $totalCount;
-
-        if ($this->currentPage < 1 || $this->totalCount < 1 || $this->totalCount < (($this->currentPage - 1)*$this->listSize)) { // we don't need to search
-            $this->searchable = false;
-            return;
-        }
-        $this->searchable = true;
-        $this->totalPage = (int)($this->totalCount/$this->listSize) + (($this->totalCount % $this->listSize == 0) ? 0 : 1);
-
-        if ($this->endAt > $this->totalCount)
-            $this->endAt = $this->totalCount;
-
-        $this->startPage =($this->currentPage%$this->paginationSize == 0) ? $this->currentPage - $this->paginationSize + 1 :
-            $this->currentPage - ($this->currentPage%$this->paginationSize) + 1;
-
-        $this->endPage = (($this->startPage + $this->paginationSize - 1) > $this->totalPage) ? $this->totalPage : ($this->startPage + $this->paginationSize - 1);
-
-        $this->prev = $this->startPage - 1;
-        $this->next = $this->startPage + $this->paginationSize;
-
-        $this->useFirstPage = ($this->startPage > $this->paginationSize);
-        $this->useLastPage = (($this->totalPage - $this->endPage) > 0 && $this->totalPage > $this->startPage);
-    }
-
-    function html() {
-
-        if (!$this->searchable)
-            return "";
-
-        $html = "<div class=\"paginate\">";
-
-        if ($this->useFirstPage) {
-            $html .= "<a class=\"first\" href=\"?p=1\"><img alt=\"처음 페이지로 이동\" src=\"../img/common/btn/btn_p_first.gif\"></a>";
-        }
-        if ($this->prev > 0) {
-            $html .= "<a class=\"prev\" href=\"?p={$this->prev}\"><img alt=\"이전 10페이지 이동\" src=\"../img/common/btn/btn_p_prev.gif\"></a>";
-        }
-        for ($i = $this->startPage; $i <= $this->endPage; $i++) {
-            if ($i == $this->currentPage){
-                $html .= "<a class=\"on\" href=\"?p={$i}\"><span>{$i}</span></a>";
-            }
-            else {
-                $html .= "<a href=\"?p={$i}\"><span>{$i}</span></a>";
-            }
-        }
-
-        if ($this->next <= $this->totalPage) {
-            $html .= "<a class=\"next\" href=\"?p={$this->next}\"><img alt=\"다음 10페이지 이동\" src=\"../img/common/btn/btn_p_next.gif\"></a>";
-        }
-        if ($this->useLastPage) {
-            $html .= "<a class=\"last\" href=\"?p={$this->totalPage}\"><img alt=\"마지막 페이지로 이동\" src=\"../img/common/btn/btn_p_last.gif\"></a>";
-        }
-
-        $html .= "</div><div style=\"width:100%;height:50px;\"></div>";
-        return $html;
-    }
-
-}
 
 $webConfig = new WebConfig();
 $webSession = new WebSession();

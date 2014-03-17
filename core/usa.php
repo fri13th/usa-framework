@@ -49,13 +49,16 @@ class Usa {
 
     /* start */
     function __construct(UsaConfig $config, UsaSession $session, UsaHttpRedirect $redirect) {
-        global $base_path;
+        error_log($_SERVER["PHP_SELF"]);
         $this->config = $config;
         $this->session = $session;
         $this->session->init();
         $this->redirect = $redirect;
-        $this->basePath = $base_path . "/usa/";
         $this->debug = $config->debug;
+    }
+
+    public function setBase($basePath) {
+        $this->basePath = $basePath . "/usa/";
     }
 
     /* include classes */
@@ -124,13 +127,17 @@ class UsaError {
     private function errorPrint($no, $str, $file, $line, $traces) {
         if ($no == E_NOTICE) return;
         global $usa;
-        if (!$usa->debug) return; # 404, or error we need to show some error message
-        else if ($usa->config->debug_mode == "local" && $no != E_STRICT && $no != E_WARNING) return;
         $error_type = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
             E_USER_WARNING => 'USER WARNING', E_USER_NOTICE => 'USER NOTICE', E_STRICT => 'STRICT',
             E_ERROR => 'ERROR', E_PARSE => 'PARSE', E_CORE_ERROR => 'CORE ERROR', E_CORE_WARNING => 'CORE WARNING',
             E_COMPILE_ERROR => 'COMPILE ERROR', E_COMPILE_WARNING => 'COMPILE WARNING',
             E_RECOVERABLE_ERROR => 'FATAL ERROR', "EXCEPTION" => 'EXCEPTION');
+
+        if (!$usa->debug) return; # 404, or error we need to show some error message
+        else if ($usa->config->debug_mode == "local" && $no != E_STRICT && $no != E_WARNING) {
+            error_log("[" . $error_type[$no] . "] " . $str . " at " . $file . "(" . $line . ")");
+            return;
+        }
 
         $error = "<div style='border:1px solid #CCC;padding:10px;background:#DDD'>[" .
             //$error_type[$no], "] " . iconv("CP949", "UTF-8", $str) . " at " . $file . "(" . $line . ")<br />" .
@@ -177,11 +184,13 @@ class BaseModel {
     protected $pdo;
     /** @var $statement PDOStatement */
     protected $statement;
+    protected $dbType;
 
 
     function __construct() {
         global $usa;
         $this->pdo = $usa->getPdo();
+        $this->dbType = $usa->config->db_type;
     }
 
     public function fetch($sql, $params) {
@@ -278,8 +287,7 @@ class BaseModel {
     public function where($column, $comparator, $value, $static = false) {
         // if $comparator is IN
         if ($comparator == "IN" || $comparator == "IS" || $static) {
-            global $usa;
-            if ($usa->config->db_type == "mssql" && $value == "NOW()") $value = "GETDATE()";
+            if ($this->dbType == "mssql" && $value == "NOW()") $value = "GETDATE()";
             array_push($this->wheres, " AND " . $this->columns[$column] . " $comparator " . $value);
         }
         else {
@@ -374,8 +382,7 @@ class BaseModel {
         $sqlLimit = "";
         $selectTop = "";
         if (sizeof($this->limit) > 0) { // only for sql server 2012+
-            global $usa;
-            if ($usa->config->db_type == "mssql") {
+            if ($this->dbType == "mssql") {
                 if ($this->limit[0] == 0) {
                     $selectTop = "TOP " . $this->limit[1] . " ";
                 }
@@ -388,7 +395,7 @@ class BaseModel {
                     return $sql;
                 }
             }
-            if ($usa->config->db_type == "mysql") $sqlLimit = " LIMIT " . $this->limit[0] . ", " . $this->limit[1];
+            if ($this->dbType == "mysql") $sqlLimit = " LIMIT " . $this->limit[0] . ", " . $this->limit[1];
         }
 
         $sql = "SELECT " . $selectTop . join(",", $sqlColumns) . " FROM " .  join(",", $sqlTableNames) . $sqlWhere;
@@ -471,12 +478,11 @@ class BaseModel {
         $values = array();
         $sets = array();
         $params = array();
-        global $usa;
 
         if ($this->pk && $this->{$this->pk}) { // update
             foreach ($this->columns as $column => $original_column) {
                 if ($column == $this->pk) continue;
-                if ($column == $this->updateDateField) array_push($sets, $original_column . (($usa->config->db_type == "mssql") ? "=GETDATE()" : "=NOW()"));
+                if ($column == $this->updateDateField) array_push($sets, $original_column . (($this->dbType == "mssql") ? "=GETDATE()" : "=NOW()"));
                 else {
                     array_push($sets, $original_column . "=:" . $column);
                     $params[$column] = $this->{$column};
@@ -491,7 +497,7 @@ class BaseModel {
             foreach ($this->columns as $column => $original_column) {
                 if ($column == $this->pk || is_null($this->{$column}) && $column != $this->insertDateField) continue;
                 array_push($columns, $original_column);
-                if ($column == $this->insertDateField) array_push($values, (($usa->config->db_type == "mssql") ? "GETDATE()" : "NOW()"));
+                if ($column == $this->insertDateField) array_push($values, (($this->dbType == "mssql") ? "GETDATE()" : "NOW()"));
                 else {
                     array_push($values, ":" . $column);
                     $params[$column] = $this->{$column};

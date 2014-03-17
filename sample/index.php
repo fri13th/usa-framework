@@ -86,6 +86,7 @@ if ($module) {
             $usa->config("root", dirname(__FILE__));
             $usa->config("uri", $uri);
             $usa->config("uri_header", $uri_header);
+            $usa->setBase(BASE_PATH);
             if ($module["controller"]) $usa->controller($module["controller"]);
             if ($module["theme"] && !stristr($pattern[0], "NO_THEME")) $usa->config("theme", $module["theme"]);
             $callFunc = (is_array($matches)) ? "call_user_func_array" : "call_user_func";
