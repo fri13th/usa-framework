@@ -6,7 +6,6 @@
 
 $base_path = dirname(__FILE__);
 $script_path = $base_path . $_SERVER['SCRIPT_NAME']; # not real uri
-define("BASE_PATH", $base_path);
 if ((php_sapi_name() == 'cli-server') && file_exists($script_path) && !endsWith($script_path, "/index.php")) { # skip existing file
     return false;
 }
@@ -24,8 +23,9 @@ $modules = array(
     "/" => array(
         "config" => "web",
         "theme" => "front",
+        "controller" => "main",
         "patterns" =>  array(
-            array("GET", "|^/$|", function(){include BASE_PATH . "/usa/views/mainView.php";}),
+            array("GET", "|^/$|", function($uri){mainAction();}),
         ),
     ),
     "/upload" => array(
@@ -77,7 +77,7 @@ $modules = array(
 $matched = false;
 $module = dict($modules, $uri_header);
 if ($module) {
-    include BASE_PATH . "/usa/configs/{$module["config"]}.php";
+    include $base_path . "/usa/configs/{$module["config"]}.php";
     # start routing
     foreach ($module["patterns"] as $pattern) {
         if (strstr($pattern[0], $method) and preg_match($pattern[1], $uri, $matches)){
@@ -86,7 +86,7 @@ if ($module) {
             $usa->config("root", dirname(__FILE__));
             $usa->config("uri", $uri);
             $usa->config("uri_header", $uri_header);
-            $usa->setBase(BASE_PATH);
+            $usa->setBase($base_path);
             if ($module["controller"]) $usa->controller($module["controller"]);
             if ($module["theme"] && !stristr($pattern[0], "NO_THEME")) $usa->config("theme", $module["theme"]);
             $callFunc = (is_array($matches)) ? "call_user_func_array" : "call_user_func";
@@ -99,7 +99,7 @@ if ($module) {
             }
             else { // 5.2 fallback
                 $usa->template("header");
-                include BASE_PATH . $pattern[2];
+                include $base_path . $pattern[2];
                 $usa->template("footer");
             }
             ob_end_flush();
@@ -107,12 +107,20 @@ if ($module) {
         }
     }
 }
-if (!$matched) response404($uri);
+if (!$matched) {
+#    error_log("404 Not Found: " . $uri);
+    header("HTTP/1.0 404 Not Found");
+    include $base_path . "/404.html";
+}
 else return false;
 
 
 
 // utils
+function startsWith($haystack, $needle) {
+    return !strncmp($haystack, $needle, strlen($needle));
+}
+
 function endsWith($haystack, $needle){
     return substr($haystack, -strlen($needle)) == $needle;
 }
@@ -121,25 +129,10 @@ function dict($array, $key, $default = NULL) {
     return isset($array[$key]) ? $array[$key] : $default;
 }
 
-function response404($uri) {
-#    error_log("404 Not Found: " . $uri);
-    header("HTTP/1.0 404 Not Found");
-    include BASE_PATH . "/404.html";
-}
-
-function startsWith($haystack, $needle) {
-    return !strncmp($haystack, $needle, strlen($needle));
-}
-
 function getRealIPAddress(){
-    if(!empty($_SERVER['HTTP_CLIENT_IP'])){
-        $ip = $_SERVER['HTTP_CLIENT_IP'];
-    }else if(!empty($_SERVER['HTTP_X_FORWARDED_FOR'])){
-        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
-    }else{
-        $ip = $_SERVER['REMOTE_ADDR'];
-    }
+    if(!empty($_SERVER['HTTP_CLIENT_IP'])) $ip = $_SERVER['HTTP_CLIENT_IP'];
+    else if(!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    else $ip = $_SERVER['REMOTE_ADDR'];
     if ($ip == "::1") $ip = "127.0.0.1";
-
     return $ip;
 }
