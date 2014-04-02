@@ -126,7 +126,7 @@ class UsaError {
 
     private function errorPrint($no, $str, $file, $line, $traces) {
         if ($no == E_NOTICE) return;
-        global $usa;
+        $usa = getUsa();
         $error_type = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
             E_USER_WARNING => 'USER WARNING', E_USER_NOTICE => 'USER NOTICE', E_STRICT => 'STRICT',
             E_ERROR => 'ERROR', E_PARSE => 'PARSE', E_CORE_ERROR => 'CORE ERROR', E_CORE_WARNING => 'CORE WARNING',
@@ -188,7 +188,7 @@ class BaseModel {
 
 
     function __construct() {
-        global $usa;
+        /** $usa Usa */$usa = getUsa();
         $this->pdo = $usa->getPdo();
         $this->dbType = $usa->config->db_type;
     }
@@ -563,7 +563,7 @@ abstract class BasePaginate { // provide improved pagination
 
 
     function __construct($currentPage, $keyword = NULL, $criteria = NULL, $listSize = 0, $paginationSize = 0){
-        global $usa;
+        $usa = getUsa();
         $this->keyword = $keyword; // legacy
         $this->criteria = $criteria; // legacy
         $this->currentPage = (!$currentPage) ? $usa->config("PAGINATE_DEFAULT_CURRENT_PAGE") : $currentPage ;

@@ -81,7 +81,7 @@ if ($module) {
     # start routing
     foreach ($module["patterns"] as $pattern) {
         if (strstr($pattern[0], $method) and preg_match($pattern[1], $uri, $matches)){
-            /** $usa Usa */global $usa;
+            $usa = getUsa();
             $usa->config("app", $module["config"]);
             $usa->config("root", dirname(__FILE__));
             $usa->config("uri", $uri);

@@ -62,7 +62,7 @@ class WebHttpRedirect extends UsaHttpRedirect {
         exit();
     }
     public function goBackWith($message) {
-        global $usa;
+        $usa = getUsa();
         echo "<!DOCTYPE html>
             <html lang='ko'>
             <head><meta charset='UTF-8'/></head>
@@ -91,7 +91,7 @@ class WebSession extends UsaSession{
         return ($value == NULL) ? $_SESSION["session.usa"][$key] : ($_SESSION["session.usa"][$key] = $value) && false;
     }
     function auth($limitLevel) {
-        global $usa;
+        $usa = getUsa();
         if ($limitLevel <= LEVEL_ADMIN && $usa->session("level") > LEVEL_ADMIN) {
             if ($usa->config("url.block.admin")) $usa->redirectTo($usa->config("url.block.admin"));
             else if ($usa->config("message.block.admin")) $usa->goBackWith($usa->config("message.block.admin"));
@@ -293,8 +293,15 @@ class FlatPaginate extends BasePaginate {
 $webConfig = new WebConfig();
 $webSession = new WebSession();
 $webRedirect = new WebHttpRedirect();
-$usa = new Usa($webConfig, $webSession, $webRedirect);
+$GLOBALS["USA_FRAMEWORK"] = new Usa($webConfig, $webSession, $webRedirect);
+/**
+ * @return Usa
+ */
+function getUsa() {
+    return $GLOBALS["USA_FRAMEWORK"];
+}
 $usaError = new UsaError();
+$usa = getUsa();
 $usa->config("PAGINATE_DEFAULT_CURRENT_PAGE", 1);
 $usa->config("PAGINATE_DEFAULT_LIST_SIZE", 10);
 $usa->config("PAGINATE_DEFAULT_PAGINATION_SIZE", 10);
