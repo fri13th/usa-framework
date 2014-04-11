@@ -17,7 +17,8 @@ $method =  $_SERVER["REQUEST_METHOD"];
 $parsed = explode("/", $uri);
 $uri_locale = $parsed[1];
 $uri_header = "/" . $parsed[1];
-
+$middleware_path = $base_path . "/../middleware/";
+$middleware = array("simpleAuth", "flatPaginate", "simpleSession", "simpleRedirect");
 
 $modules = array(
     "/" => array(

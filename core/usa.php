@@ -7,8 +7,6 @@
 date_default_timezone_set("Asia/Seoul");
 
 class UsaConfig {
-    public $app;
-    public $theme;
     public $domain;
     public $debug;
     public $debug_mode;
@@ -19,22 +17,51 @@ class UsaConfig {
     public $db_userid;
     public $db_password;
     public $db_options;
+    public $theme;
     public $data;
+
+    function __construct() {
+        $this->domain = filter_input(INPUT_SERVER, "HTTP_HOST");
+        $this->db_type = "mssql";
+        $this->data = array();
+        $this->debug = true;
+        $this->debug = false;
+        $this->debug_mode = "real";
+        $this->db_url = "mysql:host=localhost;dbname=usagidb;charset=utf8";
+        $this->db_userid = "root";
+        $this->db_password = "usagi";
+        $this->db_options = array(PDO::ATTR_PERSISTENT => false,);
+    }
+
 }
 
-abstract class UsaSession {
-    abstract public function init();
-    abstract public function session($key, $value = NULL);
-    abstract public function auth($criteria);
+class UsaSession {
+    function init() {
+        if(!isset($_SESSION["session.usa"])) {
+            $_SESSION["session.usa"]["level"] = LEVEL_GUEST;
+            $_SESSION["session.usa"]["username"] = "Guest";
+        }
+    }
+    function session($key, $value = NULL) {
+        return ($value == NULL) ? $_SESSION["session.usa"][$key] : ($_SESSION["session.usa"][$key] = $value) && false;
+    }
 }
 
-abstract class UsaHttpRedirect {
+class UsaHttpRedirect {
     public function redirectTo($url) {
         header("Location: $url");
         exit();
     }
-    abstract public function redirectWith($url,$message);
-    abstract public function goBackWith($message);
+    public function redirectWith($url,$message) {
+        echo "<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8'/></head><body><script>alert('$message');location.href='$url';</script></body></html>";
+        exit();
+    }
+    public function goBackWith($message) {
+        $usa = getUsa();
+        echo "<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8'/></head><body><script>alert('$message');history.back();</script></body></html>";
+        exit();
+    }
+
 }
 
 
@@ -48,13 +75,13 @@ class Usa {
     public $controller;
 
     /* start */
-    function __construct(UsaConfig $config, UsaSession $session, UsaHttpRedirect $redirect) {
-        error_log($_SERVER["PHP_SELF"]);
+    function __construct(UsaConfig $config) {
+        //error_log($_SERVER["PHP_SELF"]);
         $this->config = $config;
-        $this->session = $session;
-        $this->session->init();
-        $this->redirect = $redirect;
         $this->debug = $config->debug;
+        $this->session = new UsaSession();
+        $this->session->init();
+        $this->redirect = new UsaHttpRedirect();
     }
 
     public function setBase($basePath) {
@@ -70,15 +97,17 @@ class Usa {
     public function template($name) { if ($this->config("theme")) $this->base("templates/" . $this->config("app") . "/" . ($this->config("theme") ?  $this->config("theme") . "/" : "") .$name); }
     public function view($name) {$this->base("views/" . $this->config("app") . "/" . $name . "View"); }
 
-    public function auth($criteria = null) {
-        $this->session->auth($criteria);
-    }
+//    public function auth($criteria = null) {
+//        $this->session->auth($criteria);
+//    }
+
     public function config($key, $value = NULL) {
         return (func_num_args() < 2) ? $this->config->data[$key] : ($this->config->data[$key] = $value) && false;
     }
-    public function session($key, $value = NULL)  {
-        return $this->session->session($key, $value);
-    }
+
+//    public function session($key, $value = NULL)  {
+//        return $this->session->session($key, $value);
+//    }
     public function redirectTo($url) {
         $this->redirect->redirectTo($url);
     }
@@ -154,7 +183,7 @@ class UsaError {
         echo $error;
     }
 }
-
+$usaError = new UsaError();
 
 
 /**
