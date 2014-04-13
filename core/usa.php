@@ -19,69 +19,44 @@ class UsaConfig {
     public $db_options;
     public $theme;
     public $data;
+    public $middlewares;
 
     function __construct() {
         $this->domain = filter_input(INPUT_SERVER, "HTTP_HOST");
-        $this->db_type = "mssql";
+        $this->db_type = "mysql";
         $this->data = array();
         $this->debug = true;
-        $this->debug = false;
-        $this->debug_mode = "real";
-        $this->db_url = "mysql:host=localhost;dbname=usagidb;charset=utf8";
+        $this->debug_mode = "local";
+        $this->db_url = "mysql:host=localhost;dbname=usa;charset=utf8";
         $this->db_userid = "root";
-        $this->db_password = "usagi";
-        $this->db_options = array(PDO::ATTR_PERSISTENT => false,);
-    }
-
-}
-
-class UsaSession {
-    function init() {
-        if(!isset($_SESSION["session.usa"])) {
-            $_SESSION["session.usa"]["level"] = LEVEL_GUEST;
-            $_SESSION["session.usa"]["username"] = "Guest";
-        }
-    }
-    function session($key, $value = NULL) {
-        return ($value == NULL) ? $_SESSION["session.usa"][$key] : ($_SESSION["session.usa"][$key] = $value) && false;
+        $this->db_password = "";
+        $this->db_options = array(PDO::ATTR_PERSISTENT => false);
+        $this->middlewares = array();
     }
 }
 
-class UsaHttpRedirect {
-    public function redirectTo($url) {
-        header("Location: $url");
-        exit();
-    }
-    public function redirectWith($url,$message) {
-        echo "<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8'/></head><body><script>alert('$message');location.href='$url';</script></body></html>";
-        exit();
-    }
-    public function goBackWith($message) {
-        $usa = getUsa();
-        echo "<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8'/></head><body><script>alert('$message');history.back();</script></body></html>";
-        exit();
-    }
-
+abstract class UsaMiddleware {
+    abstract function setup($config);
+    abstract function process_request();
+    abstract function process_response();
 }
 
 
 class Usa {
     private $basePath;
-    private $session;
-    private $redirect;
     private $pdo;
     public $config;
     public $debug;
     public $controller;
+    public $middlewares;
 
     /* start */
     function __construct(UsaConfig $config) {
         //error_log($_SERVER["PHP_SELF"]);
         $this->config = $config;
         $this->debug = $config->debug;
-        $this->session = new UsaSession();
-        $this->session->init();
-        $this->redirect = new UsaHttpRedirect();
+        if (!isset($_SESSION["session.usa"])) $_SESSION["session.usa"]["username"] = "Guest";
+        $this->middlewares = array();
     }
 
     public function setBase($basePath) {
@@ -91,32 +66,44 @@ class Usa {
     /* include classes */
     private function base($file) {include($this->basePath . $file . ".php"); }
     public function model($name) { $this->base("models/" . $name . "Model"); }
+    public function middleware($name, $options) {
+        $name .= "Middleware";
+        $this->base("middlewares/" . $name);
+        $name = ucwords($name);
+        array_push($this->middlewares, new $name($options));
+    }
     public function form($name) { $this->base("forms/" . $name . "Form"); }
     public function util($name) { $this->base("utils/" . $name . "Util"); }
     public function controller($name) { $this->controller = $name; $this->base("controllers/" . $name . "Controller"); }
     public function template($name) { if ($this->config("theme")) $this->base("templates/" . $this->config("app") . "/" . ($this->config("theme") ?  $this->config("theme") . "/" : "") .$name); }
     public function view($name) {$this->base("views/" . $this->config("app") . "/" . $name . "View"); }
 
-//    public function auth($criteria = null) {
-//        $this->session->auth($criteria);
-//    }
-
     public function config($key, $value = NULL) {
         return (func_num_args() < 2) ? $this->config->data[$key] : ($this->config->data[$key] = $value) && false;
     }
 
-//    public function session($key, $value = NULL)  {
-//        return $this->session->session($key, $value);
-//    }
+    public function session($key, $value = NULL)  {
+        return ($value == NULL) ? $_SESSION["session.usa"][$key] : ($_SESSION["session.usa"][$key] = $value) && false;
+    }
     public function redirectTo($url) {
-        $this->redirect->redirectTo($url);
+        header("Location: $url");
+        exit();
     }
     public function redirectWith($url,$message) {
-        $this->redirect->redirectWith($url, $message);
+        echo "<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8'/></head><body><script>alert('$message');location.href='$url';</script></body></html>";
+        exit();
     }
     public function goBackWith($message) {
-        $this->redirect->goBackWith($message);
+        echo "<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8'/></head><body><script>alert('$message');history.back();</script></body></html>";
+        exit();
     }
+    public function process_request() {
+        foreach($this->middlewares as $m) $m->process_request();
+    }
+    public function process_response() {
+        foreach($this->middlewares as $m) $m->process_response();
+    }
+
     public function getPdo() {
         if (!$this->pdo) {
             $this->pdo = new PDO($this->config->db_url, $this->config->db_userid, $this->config->db_password, $this->config->db_options);

@@ -17,8 +17,6 @@ $method =  $_SERVER["REQUEST_METHOD"];
 $parsed = explode("/", $uri);
 $uri_locale = $parsed[1];
 $uri_header = "/" . $parsed[1];
-$middleware_path = $base_path . "/../middleware/";
-$middleware = array("simpleAuth", "flatPaginate", "simpleSession", "simpleRedirect");
 
 $modules = array(
     "/" => array(
@@ -87,7 +85,7 @@ if ($module) {
             $usa->config("root", dirname(__FILE__));
             $usa->config("uri", $uri);
             $usa->config("uri_header", $uri_header);
-            $usa->setBase($base_path);
+            $usa->process_request(); // middleware
             if ($module["controller"]) $usa->controller($module["controller"]);
             if ($module["theme"] && !stristr($pattern[0], "NO_THEME")) $usa->config("theme", $module["theme"]);
             $callFunc = (is_array($matches)) ? "call_user_func_array" : "call_user_func";
@@ -104,6 +102,7 @@ if ($module) {
                 $usa->template("footer");
             }
             ob_end_flush();
+            $usa->process_response(); // middleware
             return exit();
         }
     }

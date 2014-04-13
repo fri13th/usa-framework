@@ -23,6 +23,11 @@ else {
     $config->db_options = array(PDO::ATTR_PERSISTENT => false,);
 }
 
+$auth_options = array(
+    "ROLE_ANONYMOUS" => array("#/secure/auth/.*#"),
+    "ROLE_USER" => array("#/manage/.*#"),
+    "ROLE_ADMIN" => array("#/manage/.*#")
+);
 
 $GLOBALS["USA_FRAMEWORK"] = new Usa($config);
 
@@ -33,6 +38,10 @@ function getUsa() {
     return $GLOBALS["USA_FRAMEWORK"];
 }
 $usa = getUsa();
+$usa->setBase(substr(dirname(__FILE__), 0, -11));
+$usa->middleware("simpleAuth", $auth_options);
+
+// add paginate utils here
 $usa->config("PAGINATE_DEFAULT_CURRENT_PAGE", 1);
 $usa->config("PAGINATE_DEFAULT_LIST_SIZE", 10);
 $usa->config("PAGINATE_DEFAULT_PAGINATION_SIZE", 10);
