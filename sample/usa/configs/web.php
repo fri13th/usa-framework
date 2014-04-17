@@ -31,12 +31,6 @@ $auth_options = array(
 
 $GLOBALS["USA_FRAMEWORK"] = new Usa($config);
 
-/**
- * @return Usa
- */
-function getUsa() {
-    return $GLOBALS["USA_FRAMEWORK"];
-}
 $usa = getUsa();
 $usa->setBase(substr(dirname(__FILE__), 0, -11));
 $usa->middleware("simpleAuth", $auth_options);

@@ -36,6 +36,9 @@ class UsaConfig {
 }
 
 abstract class UsaMiddleware {
+    public function __construct($config){
+        $this->setup($config);
+    }
     abstract function setup($config);
     abstract function process_request();
     abstract function process_response();
@@ -647,4 +650,11 @@ abstract class PaginateForm extends BaseForm {
         $this->validation();
     }
 
+}
+
+/**
+ * @return Usa
+ */
+function getUsa() {
+    return $GLOBALS["USA_FRAMEWORK"];
 }
