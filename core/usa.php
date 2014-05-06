@@ -488,7 +488,7 @@ class BaseModel {
 
         $plainObjects = array();
         foreach ($results as $obj) {
-            array_push($plainObjects, $obj->plainObject($exclusive));
+            array_push($plainObjects, $obj->plainObject());
         }
         return $plainObjects;
     }
