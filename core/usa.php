@@ -113,10 +113,13 @@ class Usa {
         }
         return $this->pdo;
     }
-    public function jsonResponse($jsonObj) {
-        header('Content-type: application/json');
-        exit(json_encode($jsonObj));
 
+    public function jsonResponse($obj) {
+        if (is_array($obj) && is_a($obj[0], "BaseModel")) $obj = json_encode(array_map(function($i){return $i->plainObject();}, $obj));
+        else if (is_a($obj, "BaseModel")) $obj = $obj->json();
+        else if (!is_string($obj)) $obj = json_encode($obj);
+        header('Content-type: application/json');
+        exit($obj);
     }
 }
 
@@ -182,6 +185,8 @@ $usaError = new UsaError();
 class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
+    public $jsonExclusives = array(); // exclude personal information field
+    public $jsonIncludes = array();
 
     protected $table; // we don't use foreign key, use pure sql when you need it
     protected $pk;
@@ -210,24 +215,20 @@ class BaseModel {
         /** $usa Usa */$usa = getUsa();
         $this->pdo = $usa->getPdo();
         $this->dbType = $usa->config->db_type;
+        if ($this->dbType == "mysql") $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
     }
 
-    public function fetch($sql, $params) {
+    public function fetch($sql, $params, $returnArray = false) {
         $this->statement = $this->pdo->prepare($sql);
         $this->statement->setFetchMode(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE, get_class($this));
         $this->statement->execute($params);
-        $row = $this->statement->fetch();
+        $result = call_user_func(array($this->statement, $returnArray ? "fetchAll" : "fetch"));
         $this->statement->closeCursor();
-        return $row;
+        return $result;
     }
 
     public function fetchAll($sql, $params) {
-        $this->statement = $this->pdo->prepare($sql);
-        $this->statement->setFetchMode(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE, get_class($this));
-        $this->statement->execute($params);
-        $rows = $this->statement->fetchAll();
-        $this->statement->closeCursor();
-        return $rows;
+        return $this->fetch($sql, $params, true);
     }
 
     public function exec($sql, $params) {
@@ -536,14 +537,15 @@ class BaseModel {
         $this->exec($sql, array( $this->pk => $this->{$this->pk}));
     }
 
-    public function json($exclusives = null) {
-        return json_encode($this->plainObject($exclusives));
+    public function json() {
+        return json_encode($this->plainObject());
     }
 
-    public function plainObject($exclusives) {
+    public function plainObject() {
         $obj = array();
-        foreach ($this->columns as $key => $value) {
-            if (!$exclusives || !in_array($key, $exclusives)) $obj[$key] = $this->$key;
+        $columns = $this->columns + $this->jsonIncludes;
+        foreach ( $columns as $key => $value) {
+            if (!$this->jsonExclusives || !in_array($key, $this->jsonExclusives) && $key != "table") $obj[$key] = $this->$key;
         }
         return (object)$obj;
     }
