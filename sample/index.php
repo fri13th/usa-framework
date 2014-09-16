@@ -17,7 +17,10 @@ $method =  $_SERVER["REQUEST_METHOD"];
 $parsed = explode("/", $uri);
 $uri_locale = $parsed[1];
 $uri_header = "/" . $parsed[1];
+<<<<<<< HEAD
 $middleware = array(); // use as aop like way
+=======
+>>>>>>> 85186e416d894173c4ad1bfd73a65b9d54152e8d
 
 $modules = array(
     "/" => array(
@@ -82,12 +85,12 @@ if ($module) {
     # start routing
     foreach ($module["patterns"] as $pattern) {
         if (strstr($pattern[0], $method) and preg_match($pattern[1], $uri, $matches)){
-            /** $usa Usa */global $usa;
+            $usa = getUsa();
             $usa->config("app", $module["config"]);
             $usa->config("root", dirname(__FILE__));
             $usa->config("uri", $uri);
             $usa->config("uri_header", $uri_header);
-            $usa->setBase($base_path);
+            $usa->process_request(); // middleware
             if ($module["controller"]) $usa->controller($module["controller"]);
             if ($module["theme"] && !stristr($pattern[0], "NO_THEME")) $usa->config("theme", $module["theme"]);
             $callFunc = (is_array($matches)) ? "call_user_func_array" : "call_user_func";
@@ -104,6 +107,7 @@ if ($module) {
                 $usa->template("footer");
             }
             ob_end_flush();
+            $usa->process_response(); // middleware
             return exit();
         }
     }

@@ -1,7 +1,7 @@
 <?
 
 function mainAction() {
-    global $usa;
+    $usa = getUsa();
 
     $usa->model("board");
 

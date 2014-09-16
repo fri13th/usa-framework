@@ -7,8 +7,6 @@
 date_default_timezone_set("Asia/Seoul");
 
 class UsaConfig {
-    public $app;
-    public $theme;
     public $domain;
     public $debug;
     public $debug_mode;
@@ -19,41 +17,49 @@ class UsaConfig {
     public $db_userid;
     public $db_password;
     public $db_options;
+    public $theme;
     public $data;
-}
+    public $middlewares;
 
-abstract class UsaSession {
-    abstract public function init();
-    abstract public function session($key, $value = NULL);
-    abstract public function auth($criteria);
-}
-
-abstract class UsaHttpRedirect {
-    public function redirectTo($url) {
-        header("Location: $url");
-        exit();
+    function __construct() {
+        $this->domain = filter_input(INPUT_SERVER, "HTTP_HOST");
+        $this->db_type = "mysql";
+        $this->data = array();
+        $this->debug = true;
+        $this->debug_mode = "local";
+        $this->db_url = "mysql:host=localhost;dbname=usa;charset=utf8";
+        $this->db_userid = "root";
+        $this->db_password = "";
+        $this->db_options = array(PDO::ATTR_PERSISTENT => false);
+        $this->middlewares = array();
     }
-    abstract public function redirectWith($url,$message);
-    abstract public function goBackWith($message);
+}
+
+abstract class UsaMiddleware {
+    public function __construct($config){
+        $this->setup($config);
+    }
+    abstract function setup($config);
+    abstract function process_request();
+    abstract function process_response();
 }
 
 
 class Usa {
     private $basePath;
-    private $session;
-    private $redirect;
     private $pdo;
     public $config;
     public $debug;
     public $controller;
+    public $middlewares;
 
     /* start */
-    function __construct(UsaConfig $config, UsaSession $session, UsaHttpRedirect $redirect) {
+    function __construct(UsaConfig $config) {
+        //error_log($_SERVER["PHP_SELF"]);
         $this->config = $config;
-        $this->session = $session;
-        $this->session->init();
-        $this->redirect = $redirect;
         $this->debug = $config->debug;
+        if (!isset($_SESSION["session.usa"])) $_SESSION["session.usa"]["username"] = "Guest";
+        $this->middlewares = array();
     }
 
     public function setBase($basePath) {
@@ -63,40 +69,57 @@ class Usa {
     /* include classes */
     private function base($file) {include($this->basePath . $file . ".php"); }
     public function model($name) { $this->base("models/" . $name . "Model"); }
+    public function middleware($name, $options) {
+        $name .= "Middleware";
+        $this->base("middlewares/" . $name);
+        $name = ucwords($name);
+        array_push($this->middlewares, new $name($options));
+    }
     public function form($name) { $this->base("forms/" . $name . "Form"); }
     public function util($name) { $this->base("utils/" . $name . "Util"); }
     public function controller($name) { $this->controller = $name; $this->base("controllers/" . $name . "Controller"); }
     public function template($name) { if ($this->config("theme")) $this->base("templates/" . $this->config("app") . "/" . ($this->config("theme") ?  $this->config("theme") . "/" : "") .$name); }
     public function view($name) {$this->base("views/" . $this->config("app") . "/" . $name . "View"); }
 
-    public function auth($criteria = null) {
-        $this->session->auth($criteria);
-    }
     public function config($key, $value = NULL) {
         return (func_num_args() < 2) ? $this->config->data[$key] : ($this->config->data[$key] = $value) && false;
     }
+
     public function session($key, $value = NULL)  {
-        return $this->session->session($key, $value);
+        return ($value == NULL) ? $_SESSION["session.usa"][$key] : ($_SESSION["session.usa"][$key] = $value) && false;
     }
     public function redirectTo($url) {
-        $this->redirect->redirectTo($url);
+        header("Location: $url");
+        exit();
     }
     public function redirectWith($url,$message) {
-        $this->redirect->redirectWith($url, $message);
+        echo "<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8'/></head><body><script>alert('$message');location.href='$url';</script></body></html>";
+        exit();
     }
     public function goBackWith($message) {
-        $this->redirect->goBackWith($message);
+        echo "<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8'/></head><body><script>alert('$message');history.back();</script></body></html>";
+        exit();
     }
+    public function process_request() {
+        foreach($this->middlewares as $m) $m->process_request();
+    }
+    public function process_response() {
+        foreach($this->middlewares as $m) $m->process_response();
+    }
+
     public function getPdo() {
         if (!$this->pdo) {
             $this->pdo = new PDO($this->config->db_url, $this->config->db_userid, $this->config->db_password, $this->config->db_options);
         }
         return $this->pdo;
     }
-    public function jsonResponse($jsonObj) {
-        header('Content-type: application/json');
-        exit(json_encode($jsonObj));
 
+    public function jsonResponse($obj) {
+        if (is_array($obj) && is_a($obj[0], "BaseModel")) $obj = json_encode(array_map(function($i){return $i->plainObject();}, $obj));
+        else if (is_a($obj, "BaseModel")) $obj = $obj->json();
+        else if (!is_string($obj)) $obj = json_encode($obj);
+        header('Content-type: application/json');
+        exit($obj);
     }
 }
 
@@ -125,7 +148,7 @@ class UsaError {
 
     private function errorPrint($no, $str, $file, $line, $traces) {
         if ($no == E_NOTICE) return;
-        global $usa;
+        $usa = getUsa();
         $error_type = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
             E_USER_WARNING => 'USER WARNING', E_USER_NOTICE => 'USER NOTICE', E_STRICT => 'STRICT',
             E_ERROR => 'ERROR', E_PARSE => 'PARSE', E_CORE_ERROR => 'CORE ERROR', E_CORE_WARNING => 'CORE WARNING',
@@ -153,7 +176,7 @@ class UsaError {
         echo $error;
     }
 }
-
+$usaError = new UsaError();
 
 
 /**
@@ -162,6 +185,8 @@ class UsaError {
 class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
+    public $jsonExclusives = array(); // exclude personal information field
+    public $jsonIncludes = array();
 
     protected $table; // we don't use foreign key, use pure sql when you need it
     protected $pk;
@@ -187,27 +212,23 @@ class BaseModel {
 
 
     function __construct() {
-        global $usa;
+        /** $usa Usa */$usa = getUsa();
         $this->pdo = $usa->getPdo();
         $this->dbType = $usa->config->db_type;
+        if ($this->dbType == "mysql") $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
     }
 
-    public function fetch($sql, $params) {
+    public function fetch($sql, $params, $returnArray = false) {
         $this->statement = $this->pdo->prepare($sql);
         $this->statement->setFetchMode(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE, get_class($this));
         $this->statement->execute($params);
-        $row = $this->statement->fetch();
+        $result = call_user_func(array($this->statement, $returnArray ? "fetchAll" : "fetch"));
         $this->statement->closeCursor();
-        return $row;
+        return $result;
     }
 
     public function fetchAll($sql, $params) {
-        $this->statement = $this->pdo->prepare($sql);
-        $this->statement->setFetchMode(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE, get_class($this));
-        $this->statement->execute($params);
-        $rows = $this->statement->fetchAll();
-        $this->statement->closeCursor();
-        return $rows;
+        return $this->fetch($sql, $params, true);
     }
 
     public function exec($sql, $params) {
@@ -467,7 +488,7 @@ class BaseModel {
 
         $plainObjects = array();
         foreach ($results as $obj) {
-            array_push($plainObjects, $obj->plainObject($exclusive));
+            array_push($plainObjects, $obj->plainObject());
         }
         return $plainObjects;
     }
@@ -516,14 +537,15 @@ class BaseModel {
         $this->exec($sql, array( $this->pk => $this->{$this->pk}));
     }
 
-    public function json($exclusives = null) {
-        return json_encode($this->plainObject($exclusives));
+    public function json() {
+        return json_encode($this->plainObject());
     }
 
-    public function plainObject($exclusives) {
+    public function plainObject() {
         $obj = array();
-        foreach ($this->columns as $key => $value) {
-            if (!$exclusives || !in_array($key, $exclusives)) $obj[$key] = $this->$key;
+        $columns = $this->columns + $this->jsonIncludes;
+        foreach ( $columns as $key => $value) {
+            if (!$this->jsonExclusives || !in_array($key, $this->jsonExclusives) && $key != "table") $obj[$key] = $this->$key;
         }
         return (object)$obj;
     }
@@ -562,7 +584,7 @@ abstract class BasePaginate { // provide improved pagination
 
 
     function __construct($currentPage, $keyword = NULL, $criteria = NULL, $listSize = 0, $paginationSize = 0){
-        global $usa;
+        $usa = getUsa();
         $this->keyword = $keyword; // legacy
         $this->criteria = $criteria; // legacy
         $this->currentPage = (!$currentPage) ? $usa->config("PAGINATE_DEFAULT_CURRENT_PAGE") : $currentPage ;
@@ -630,4 +652,11 @@ abstract class PaginateForm extends BaseForm {
         $this->validation();
     }
 
+}
+
+/**
+ * @return Usa
+ */
+function getUsa() {
+    return $GLOBALS["USA_FRAMEWORK"];
 }
