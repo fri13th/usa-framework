@@ -1,0 +1,17 @@
+/* TEAM */
+	Programmer: Jonghee
+	Contact: tenderain [at] gmail.com
+	Twitter: @fri13th
+	From: Seoul, Korea
+
+/* THANKS */
+
+	Company: D.FY
+	Location: Korea
+
+
+/* SITE */
+	Last update:2014/03/20
+	Language: English / Japanese / Korea
+	Doctype:HTML5
+	IDE: IntelliJ Idea, Sublime Text, Photoshop

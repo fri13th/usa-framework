@@ -49,7 +49,6 @@ class Usa {
 
     /* start */
     function __construct(UsaConfig $config, UsaSession $session, UsaHttpRedirect $redirect) {
-        error_log($_SERVER["PHP_SELF"]);
         $this->config = $config;
         $this->session = $session;
         $this->session->init();

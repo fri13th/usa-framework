@@ -5,7 +5,7 @@
  */
 
 $base_path = dirname(__FILE__);
-$script_path = $base_path . $_SERVER['SCRIPT_NAME']; # not real uri
+$script_path = $base_path . $_SERVER['SCRIPT_NAME']; // not real uri
 if ((php_sapi_name() == 'cli-server') && file_exists($script_path) && !endsWith($script_path, "/index.php")) { # skip existing file
     return false;
 }
@@ -17,13 +17,14 @@ $method =  $_SERVER["REQUEST_METHOD"];
 $parsed = explode("/", $uri);
 $uri_locale = $parsed[1];
 $uri_header = "/" . $parsed[1];
-
+$middleware = array(); // use as aop like way
 
 $modules = array(
     "/" => array(
         "config" => "web",
         "theme" => "front",
         "controller" => "main",
+        "middleware" => array(),
         "patterns" =>  array(
             array("GET", "|^/$|", function($uri){mainAction();}),
         ),

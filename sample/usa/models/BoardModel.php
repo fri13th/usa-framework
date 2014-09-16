@@ -1,0 +1,5 @@
+<?
+
+class BoardModel extends BaseModel {
+
+}

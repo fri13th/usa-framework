@@ -6,41 +6,32 @@
 
 
 
-define("LEVEL_GUEST", 60);      // not logged
-define("LEVEL_DROP", 50);       // block login
-define("LEVEL_CLOSED", 40);     // block login
-define("LEVEL_FREE", 30);       // only login
-define("LEVEL_PREMIUM", 20);     // expired by one year
-define("LEVEL_ADMIN", 10);       // admin mode, restaurant manage
-
 class WebConfig extends UsaConfig {
     function __construct() {
         $this->domain = filter_input(INPUT_SERVER, "HTTP_HOST");
         $this->app = substr(basename(__FILE__), 0, -4);
-        $this->db_type = "mssql";
         $this->data = array(
-            "url.login" => "/secure/auth/login",
-            "url.block.admin" => false,
-            "url.block.premium" => false,
-            "message.block.admin" => "접근하실수 없는 서비스 입니다.",
-            "message.block.premium" => "유료회원 가입이 필요한 서비스입니다."
+            "url.login" => "/secure/auth/login"
         );
 
         if (strstr($this->domain, "localhost") || preg_match('/^[\d\.:]*$/', $this->domain)  || (php_sapi_name() == "cli")) {
+            $path = dirname(__FILE__);
             $this->debug = true;
             $this->debug_mode = "local";
-            $this->db_url = "mysql:host=localhost;dbname=usagidb;charset=utf8";
-            $this->db_userid = "root";
-            $this->db_password = "usagi";
-            $this->db_options = array();
+            $this->db_url = "sqlite:" . $path . "/../db/db.db";
+            $this->db_userid = null;
+            $this->db_password = null;
+            $this->db_options = array(PDO::ATTR_PERSISTENT => true);
+            $this->db_type = "sqlite"; // mysql, mssql, sqlite
         }
         else {
             $this->debug = false;
             $this->debug_mode = "real";
-            $this->db_url = "mysql:host=localhost;dbname=usagidb;charset=utf8";
+            $this->db_url = "mysql:host=yourhost.com;dbname=yourdb;charset=utf8";
             $this->db_userid = "root";
-            $this->db_password = "usagi";
+            $this->db_password = "";
             $this->db_options = array(PDO::ATTR_PERSISTENT => false,);
+            $this->db_type = "mysql"; // mysql, mssql, sqlite3
         }
     }
 
@@ -83,7 +74,7 @@ class WebHttpRedirect extends UsaHttpRedirect {
 class WebSession extends UsaSession{
     function init() {
         if(!isset($_SESSION["session.usa"])) {
-            $_SESSION["session.usa"]["level"] = LEVEL_GUEST;
+            $_SESSION["session.usa"]["level"] = "GUEST";
             $_SESSION["session.usa"]["username"] = "Guest";
         }
     }
