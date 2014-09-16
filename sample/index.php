@@ -17,10 +17,7 @@ $method =  $_SERVER["REQUEST_METHOD"];
 $parsed = explode("/", $uri);
 $uri_locale = $parsed[1];
 $uri_header = "/" . $parsed[1];
-<<<<<<< HEAD
 $middleware = array(); // use as aop like way
-=======
->>>>>>> 85186e416d894173c4ad1bfd73a65b9d54152e8d
 
 $modules = array(
     "/" => array(
