@@ -131,6 +131,7 @@ class Usa {
     public function jsonResponse($obj) {
         if (is_array($obj) && is_a($obj[0], "BaseModel")) $obj = json_encode(array_map(function($i){return $i->plainObject();}, $obj));
         else if (is_a($obj, "BaseModel")) $obj = $obj->json();
+        else if (is_a($obj, "BasePaginate")) $obj = $obj->json();
         else if (!is_string($obj)) $obj = json_encode($obj);
         header('Content-type: application/json');
         exit($obj);
@@ -199,7 +200,7 @@ $usaError = new UsaError();
 class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
-    public $jsonExclusives = array(); // exclude personal information field
+    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table"); // exclude personal information field
     public $jsonIncludes = array();
 
     protected $table; // we don't use foreign key, use pure sql when you need it
@@ -230,6 +231,7 @@ class BaseModel {
         $this->pdo = $usa->getPdo();
         $this->dbType = $usa->config->db_type;
         if ($this->dbType == "mysql") $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+        $this->jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table");
     }
 
     public function fetch($sql, $params, $returnArray = false) {
@@ -558,8 +560,8 @@ class BaseModel {
     public function plainObject() {
         $obj = array();
         $columns = $this->columns + $this->jsonIncludes;
-        foreach ( $columns as $key => $value) {
-            if (!$this->jsonExclusives || !in_array($key, $this->jsonExclusives) && $key != "table") $obj[$key] = $this->$key;
+        foreach ($columns as $key => $value) {
+            if (!in_array($key, $this->jsonExclusives)) $obj[$key] = $this->$key;
         }
         return (object)$obj;
     }
@@ -615,6 +617,27 @@ abstract class BasePaginate { // provide improved pagination
     function setList($list){$this->list = $list;}
 
     abstract function setTotalCount($totalCount);
+    public function json() {
+        return json_encode($this->plainObject());
+    }
+
+    public function plainObject() {
+        $obj = array();
+
+        $obj["currentPage"] = $this->currentPage;
+        $obj["listSize"] = $this->listSize;
+        $obj["paginationSize"] = $this->paginationSize;
+        $obj["criteria"] = $this->criteria;
+        $obj["totalCount"] = $this->totalCount;
+        $obj["searchable"] = $this->searchable;
+
+        $obj["list"] = array();
+
+        foreach ($this->list as $item) {
+            array_push($obj["list"], $item->plainObject());
+        }
+        return (object)$obj;
+    }
 }
 
 
