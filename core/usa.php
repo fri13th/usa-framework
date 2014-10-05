@@ -454,6 +454,8 @@ class BaseModel {
 
     public function paginate(BasePaginate $paginate){
         $this->limit($paginate->startAt, $paginate->paginationSize);
+        $this->criteria($paginate->criteria);
+        $this->keyword($paginate->keyword);
         $totalCount = $this->selectCount();
         $paginate->setTotalCount($totalCount);
         $sql = $this->generateSelectSql(null);
@@ -565,6 +567,9 @@ class BaseModel {
         }
         return (object)$obj;
     }
+
+    public function criteria($criteria){} // almost abstract
+    public function keyword($keyword){} // almost abstract
 
 }
 
