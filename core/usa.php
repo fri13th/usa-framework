@@ -30,7 +30,7 @@ class UsaConfig {
         $this->db_url = "mysql:host=localhost;dbname=usa;charset=utf8";
         $this->db_userid = "root";
         $this->db_password = "";
-        $this->db_options = array(PDO::ATTR_PERSISTENT => false);
+        $this->db_options = array(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $this->middlewares = array();
     }
 }
@@ -240,6 +240,7 @@ class BaseModel {
         $this->statement->execute($params);
         $result = call_user_func(array($this->statement, $returnArray ? "fetchAll" : "fetch"));
         $this->statement->closeCursor();
+        //print_r($this->statement->errorInfo());
         return $result;
     }
 
@@ -249,7 +250,9 @@ class BaseModel {
 
     public function exec($sql, $params) {
         $this->statement = $this->pdo->prepare($sql);
-        return $this->statement->execute($params);
+        $result = $this->statement->execute($params);
+        //print_r($this->statement->errorInfo());
+        return $result;
     }
 
     public function lastInsertId($name) {
@@ -528,7 +531,7 @@ class BaseModel {
             }
             $params[$this->pk] = $this->{$this->pk};
 
-            $sql = "UPDATE " . $this->table . " SET " . join(", ", $sets) . " WHERE " . $this->pk . "=:" . $this->pk;
+            $sql = "UPDATE " . $this->table . " SET " . join(", ", $sets) . " WHERE " . $this->columns[$this->pk] . "=:" . $this->pk;
             $this->exec($sql, $params);
         }
         else {
@@ -542,7 +545,7 @@ class BaseModel {
                 }
             }
             $sql = "INSERT INTO "  . $this->table . " (" . join(", ", $columns). ") VALUES (" . join(", ", $values). ")";
-            error_log($sql);
+            #error_log($sql);
             #error_log(join(", ", $params));
             $this->exec($sql, $params);
             if ($this->pk) $this->{$this->pk} = $this->lastInsertId($this->pk);
@@ -571,6 +574,11 @@ class BaseModel {
     public function criteria($criteria){} // almost abstract
     public function keyword($keyword){} // almost abstract
 
+    public function copy($obj){
+        foreach ($this->columns as $key => $val) {
+            if (property_exists($obj, $key)) $this->$key = $obj->$key;
+        }
+    }
 }
 
 /** class for pagination */
@@ -663,7 +671,8 @@ abstract class BaseForm {
     function sanitizeAndRequiredCheck() {
         $result = filter_var_array($_GET + $_POST, $this->sanitizeRules);
         foreach ($this->sanitizeRules as $param => $rule) {
-            $this->$param = $result[$param] or $rule["default"];
+            $result[$param] = trim($result[$param]);
+            $this->$param = ($result[$param]) ? $result[$param] : $rule["default"];
             $rule = $this->sanitizeRules[$param];
             if ($rule["required"] && !isset($result[$param])) $this->errors[$param] = array("required");
         }
