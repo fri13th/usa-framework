@@ -234,9 +234,10 @@ class BaseModel {
         $this->jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table");
     }
 
-    public function fetch($sql, $params, $returnArray = false) {
+    public function fetch($sql, $params, $returnArray = false, $fetchMode = PDO::FETCH_CLASS) {
         $this->statement = $this->pdo->prepare($sql);
-        $this->statement->setFetchMode(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE, get_class($this));
+        if ($fetchMode == PDO::FETCH_CLASS) $this->statement->setFetchMode($fetchMode|PDO::FETCH_PROPS_LATE, get_class($this));
+        else $this->statement->setFetchMode($fetchMode);
         $this->statement->execute($params);
         $result = call_user_func(array($this->statement, $returnArray ? "fetchAll" : "fetch"));
         $this->statement->closeCursor();
@@ -244,8 +245,12 @@ class BaseModel {
         return $result;
     }
 
-    public function fetchAll($sql, $params) {
-        return $this->fetch($sql, $params, true);
+    public function fetchAll($sql, $params, $returnArray = true, $fetchMode = PDO::FETCH_CLASS) {
+        return $this->fetch($sql, $params, $returnArray, $fetchMode);
+    }
+
+    public function fetchBoth($sql, $params) {
+        return $this->fetch($sql, $params, true, PDO::FETCH_BOTH);
     }
 
     public function exec($sql, $params) {
