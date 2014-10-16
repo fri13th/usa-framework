@@ -87,13 +87,6 @@ class Usa {
     }
     public function template($name) { if ($this->config("theme")) $this->base("templates/" . $this->config("app") . "/" . ($this->config("theme") ?  $this->config("theme") . "/" : "") .$name); }
     public function view($name) {$this->base("views/" . $this->config("app") . "/" . $name . "View"); }
-    public function viewString($name) {
-        ob_start();
-        $this->view($name);
-        $view = ob_get_contents();
-        ob_end_clean();
-        return $view;
-    }
 
     public function config($key, $value = NULL) {
         return (func_num_args() < 2) ? $this->config->data[$key] : ($this->config->data[$key] = $value) && false;
