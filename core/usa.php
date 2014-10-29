@@ -277,6 +277,16 @@ class BaseModel {
         return $this->pdo->rollBack();
     }
 
+    public function whereAndBegin() {
+        array_push($this->wheres, "AND ( 1 != 1 ");
+        return $this;
+    }
+
+    public function whereAndEnd() {
+        array_push($this->wheres, ") ");
+        return $this;
+    }
+
     public function whereOrBegin() {
         array_push($this->wheres, "OR ( 1 = 1 ");
         return $this;
