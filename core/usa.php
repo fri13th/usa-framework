@@ -217,10 +217,12 @@ class BaseModel {
     /** @var $statement PDOStatement */
     protected $statement;
     protected $dbType;
+    private $paramSuffix;
 
 
     function __construct() {
         /** $usa Usa */$usa = getUsa();
+        $this->paramSuffix = 0;
         $this->pdo = $usa->getPdo();
         $this->dbType = $usa->config->db_type;
         if ($this->dbType == "mysql") $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
@@ -333,13 +335,15 @@ class BaseModel {
 
     public function where($column, $comparator, $value, $static = false) {
         // if $comparator is IN
+        $this->paramSuffix++;
+        $valueKey = $column . "___" . $this->paramSuffix;
         if ($comparator == "IN" || $comparator == "IS" || $static) {
             if ($this->dbType == "mssql" && $value == "NOW()") $value = "GETDATE()";
             array_push($this->wheres, " AND " . $this->columns[$column] . " $comparator " . $value);
         }
         else {
-            array_push($this->wheres, " AND " . $this->columns[$column] . " " . $comparator . " :" . $column);
-            $this->params[$column] = $value; // we must use pdo for preventing sql injection
+            array_push($this->wheres, " AND " . $this->columns[$column] . " " . $comparator . " :" . $valueKey);
+            $this->params[$valueKey] = $value; // we must use pdo for preventing sql injection
         }
         return $this;
     }
@@ -461,6 +465,7 @@ class BaseModel {
         $this->groupBys = array();
         $this->limit = array();
         $this->onlySelectedField = false;
+        $this->paramSuffix = 0;
     }
 
     public function paginate(BasePaginate $paginate){
