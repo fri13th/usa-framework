@@ -684,8 +684,8 @@ abstract class BaseForm {
     function sanitizeAndRequiredCheck() {
         $result = filter_var_array($_GET + $_POST, $this->sanitizeRules);
         foreach ($this->sanitizeRules as $param => $rule) {
-            $result[$param] = trim($result[$param]);
-            $this->$param = ($result[$param]) ? $result[$param] : $rule["default"];
+            $result[$param] = (is_string($result[$param])) ? trim($result[$param]) : $result[$param];
+            $this->$param = ($result[$param] != null && $result[$param] != "") ? $result[$param] : $rule["default"];
             $rule = $this->sanitizeRules[$param];
             if ($rule["required"] && !isset($result[$param])) $this->errors[$param] = array("required");
         }
