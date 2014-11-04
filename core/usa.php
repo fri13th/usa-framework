@@ -211,7 +211,7 @@ class BaseModel {
     protected $prefixes = array("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o");//...
     protected $insertDateField = "";
     protected $updateDateField = "";
-    private   $onlySelectedField = false;
+    protected $onlySelectedField = false;
 
     protected $pdo;
     /** @var $statement PDOStatement */
@@ -349,12 +349,12 @@ class BaseModel {
     }
     public function orderBy($column, $order = "DESC") {
         array_push($this->orderBysMSSQL, array($column, $order));
-        array_push($this->orderBys, array($this->columns[$column], $order));
+        array_push($this->orderBys, array(($this->columns[$column]) ? $this->columns[$column] : $column, $order));
         return $this;
     }
 
     public function groupBy($column) {
-        array_push($this->orderBys, $this->columns[$column]);
+        array_push($this->groupBys, $this->columns[$column]);
         return $this;
     }
 
@@ -403,11 +403,7 @@ class BaseModel {
 
         $sqlGroupBy = "";
         if (sizeof($this->groupBys) > 0) {
-            $groupBys = array();
-            foreach ($this->groupBys as $groupBy) {
-                array_push($groupBys, join(" " , $groupBy));
-            }
-            $sqlGroupBy = " GROUP BY " . join(", ", $groupBys);
+            $sqlGroupBy = " GROUP BY " . join(", ", $this->groupBys);
         }
 
         $sqlOrderBy = "";
@@ -449,8 +445,8 @@ class BaseModel {
             if ($this->dbType == "mysql") $sqlLimit = " LIMIT " . $this->limit[0] . ", " . $this->limit[1];
         }
 
-        $sql = "SELECT " . $selectTop . join(",", $sqlColumns) . " FROM " .  join(",", $sqlTableNames) . $sqlWhere;
-        if(!$this->onlySelectedField) $sql .= $sqlGroupBy . $sqlOrderBy . $sqlLimit; #add where and order by and limit
+        $sql = "SELECT " . $selectTop . join(",", $sqlColumns) . " FROM " .  join(",", $sqlTableNames) . $sqlWhere . $sqlGroupBy . $sqlOrderBy;
+        if(!$this->onlySelectedField) $sql .= $sqlLimit; #add where and order by and limit
 #        echo $sql;
 #        error_log($sql);
         return $sql;
@@ -494,7 +490,7 @@ class BaseModel {
      * @param null $column
      * @return BaseModel
      */
-    public function selectCount() {
+    public function selectCount($reset = false) {
         $fields = $this->fields;
         $this->fields = array("count(*) as totalCount");
         $this->onlySelectedField = true;
@@ -502,7 +498,18 @@ class BaseModel {
         $result = $this->fetch($sql, $this->params);        // reset variables for next use
         $this->onlySelectedField = false;
         $this->fields = $fields;
+        if ($reset) $this->resetVariables();
         return $result->totalCount;
+    }
+
+    public function selectOnlyField($field) {
+        $fields = $this->fields;
+        $this->fields = array($field);
+        $this->onlySelectedField = true;
+        $list = $this->selectAll();
+        $this->onlySelectedField = false;
+        $this->fields = $fields;
+        return $list;
     }
 
     public function selectField() {
