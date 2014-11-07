@@ -684,17 +684,32 @@ abstract class BaseForm {
     public $error = false;
 
     function __construct(){
-        $this->sanitizeAndRequiredCheck();
+
+//        if ($json)
+//        $result = json_decode(file_get_contents("php://input"));
+        $result = null;
+        if (strstr($_SERVER["CONTENT_TYPE"], "application/json")) $result = json_decode(file_get_contents("php://input"));
+        $this->sanitizeAndRequiredCheck($result);
         $this->validation();
     }
 
-    function sanitizeAndRequiredCheck() {
-        $result = filter_var_array($_GET + $_POST, $this->sanitizeRules);
-        foreach ($this->sanitizeRules as $param => $rule) {
-            $result[$param] = (is_string($result[$param])) ? trim($result[$param]) : $result[$param];
-            $this->$param = ($result[$param] != null && $result[$param] != "") ? $result[$param] : $rule["default"];
-            $rule = $this->sanitizeRules[$param];
-            if ($rule["required"] && !isset($result[$param])) $this->errors[$param] = array("required");
+    function sanitizeAndRequiredCheck($result) {
+        if ($result) {
+            foreach ($this->sanitizeRules as $param => $rule) {
+                $result->$param = (is_string($result->$param)) ? trim($result->$param) : $result->$param;
+                $this->$param = ($result->$param != null && $result->$param != "") ? $result->$param : $rule["default"];
+                $rule = $this->sanitizeRules[$param];
+                if ($rule["required"] && !isset($result->$param)) $this->errors[$param] = array("required");
+            }
+        }
+        else {
+            $result = filter_var_array($_GET + $_POST, $this->sanitizeRules);
+            foreach ($this->sanitizeRules as $param => $rule) {
+                $result[$param] = (is_string($result[$param])) ? trim($result[$param]) : $result[$param];
+                $this->$param = ($result[$param] != null && $result[$param] != "") ? $result[$param] : $rule["default"];
+                $rule = $this->sanitizeRules[$param];
+                if ($rule["required"] && !isset($result[$param])) $this->errors[$param] = array("required");
+            }
         }
         $this->error = (count($this->errors) > 0);
     }
