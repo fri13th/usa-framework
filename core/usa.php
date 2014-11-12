@@ -193,8 +193,9 @@ $usaError = new UsaError();
 class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
-    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table"); // exclude personal information field
+    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table", "resetVariableFlag", "prefixes", "fields", "wheres", "orderBys"); // exclude personal information field
     public $jsonIncludes = array();
+    public $resetVariableFlag = true;
 
     protected $table; // we don't use foreign key, use pure sql when you need it
     protected $pk;
@@ -224,6 +225,7 @@ class BaseModel {
         /** $usa Usa */$usa = getUsa();
         $this->paramSuffix = 0;
         $this->pdo = $usa->getPdo();
+        $this->resetVariableFlag = true;
         $this->dbType = $usa->config->db_type;
         if ($this->dbType == "mysql") $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
         $this->jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table");
@@ -453,18 +455,20 @@ class BaseModel {
     }
 
     private function resetVariables() {
-        $this->params = array();
-        $this->customColumns = array();
-        $this->fields = array();
-        $this->wheres = array();
-        $this->orderBys = array();
-        $this->groupBys = array();
-        $this->limit = array();
-        $this->onlySelectedField = false;
-        $this->paramSuffix = 0;
+        if ($this->resetVariableFlag) {
+            $this->params = array();
+            $this->customColumns = array();
+            $this->fields = array();
+            $this->wheres = array();
+            $this->orderBys = array();
+            $this->groupBys = array();
+            $this->limit = array();
+            $this->onlySelectedField = false;
+            $this->paramSuffix = 0;
+        }
     }
 
-    public function paginate(BasePaginate $paginate){
+    public function paginateMultiple(BasePaginate $paginate){
         $this->limit($paginate->startAt, $paginate->paginationSize);
         $this->criteria($paginate->criteria);
         $this->keyword($paginate->keyword);
@@ -472,6 +476,20 @@ class BaseModel {
         $paginate->setTotalCount($totalCount);
         $sql = $this->generateSelectSql(null);
         $paginate->setList($this->fetchAll($sql, $this->params));
+        $this->resetVariables();
+        return $paginate;
+    }
+
+    public function paginate(BasePaginate $paginate){
+        $this->limit($paginate->startAt, $paginate->paginationSize);
+        $this->criteria($paginate->criteria);
+        $this->keyword($paginate->keyword);
+        $this->resetVariableFlag = false;
+        $totalCount = $this->selectCount();
+        $paginate->setTotalCount($totalCount);
+        $sql = $this->generateSelectSql(null);
+        $paginate->setList($this->fetchAll($sql, $this->params));
+        $this->resetVariableFlag = true;
         $this->resetVariables();
         return $paginate;
     }
@@ -490,7 +508,7 @@ class BaseModel {
      * @param null $column
      * @return BaseModel
      */
-    public function selectCount($reset = false) {
+    public function selectCount() {
         $fields = $this->fields;
         $this->fields = array("count(*) as totalCount");
         $this->onlySelectedField = true;
@@ -498,7 +516,7 @@ class BaseModel {
         $result = $this->fetch($sql, $this->params);        // reset variables for next use
         $this->onlySelectedField = false;
         $this->fields = $fields;
-        if ($reset) $this->resetVariables();
+        $this->resetVariables();
         return $result->totalCount;
     }
 
