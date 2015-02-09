@@ -44,6 +44,7 @@ class DbTest extends PHPUnit_Framework_TestCase {
         $usa = getUsa();
         $usa->model("board");
         $boardJoinDao = new BoardModel();
+        $boardJoinDao.join(null,null, null, null, null);
 
     }
 }
