@@ -40,4 +40,10 @@ class DbTest extends PHPUnit_Framework_TestCase {
 
     // may we use insert, update, delete
 
+    public function testJoin() {
+        $usa = getUsa();
+        $usa->model("board");
+        $boardJoinDao = new BoardModel();
+
+    }
 }

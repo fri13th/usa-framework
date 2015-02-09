@@ -6,6 +6,7 @@
 
 
 $config = new UsaConfig();
+$config->domain = filter_input(INPUT_SERVER, "HTTP_HOST");
 $config->db_type = "mysql";
 if (strstr($config->domain, "localhost") || preg_match('/^[\d\.:]*$/', $config->domain) || (php_sapi_name() == "cli")) {
     $config->debug = true;
