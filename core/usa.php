@@ -180,33 +180,35 @@ class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
 
-    protected $table; // we don't use foreign key, use pure sql when you need it
-    protected $pk;
-    protected $columns = array();
-    protected $customColumns = array();
-    protected $fields = array();
-    protected $wheres = array();
-    protected $orderBys = array();
-    protected $orderBysMSSQL = array();
-    protected $groupBys = array();
-    protected $joins = array();
-    protected $limit = array();
-    protected $params = array();
-    protected $prefixes = array("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o");//...
-    protected $insertDateField = "";
-    protected $updateDateField = "";
-    private   $onlySelectedField = false;
-
     protected $pdo;
     /** @var $statement PDOStatement */
     protected $statement;
     protected $dbType;
 
+    protected $table; // we don't use foreign key, use pure sql when you need it
+    protected $pk;
+    protected $columns = array();
+
+    protected $insertDateField = "";
+    protected $updateDateField = "";
+
+
+    protected $vars = array();
+    protected $varsPrev = array(); // save prev variables, so don't reset
+
+//    protected $fields = array();
+//    protected $wheres = array();
+//    protected $orderBys = array();
+//    protected $orderBysMSSQL = array();
+//    protected $groupBys = array();
+//    protected $limit = array();
+//    protected $params = array();
 
     function __construct() {
         /** $usa Usa */$usa = getUsa();
         $this->pdo = $usa->getPdo();
         $this->dbType = $usa->config->db_type;
+        $this->initVars();
     }
 
     public function fetch($sql, $params) {
@@ -257,12 +259,12 @@ class BaseModel {
     }
 
     public function whereOrBegin() {
-        array_push($this->wheres, "OR ( 1 = 1 ");
+        array_push($this->vars["wheres"], "OR ( 1 = 1 ");
         return $this;
     }
 
     public function whereOrEnd() {
-        array_push($this->wheres, ") ");
+        array_push($this->vars["wheres"], ") ");
         return $this;
     }
 
@@ -275,27 +277,29 @@ class BaseModel {
     }
 
     public function isNotNull($column) {
-        array_push($this->wheres, " AND " . $this->columns[$column] . " IS NOT NULL ");
+        array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " IS NOT NULL ");
         return $this;
     }
 
     public function isNull($column) {
-        array_push($this->wheres, " AND " . $this->columns[$column] . " IS NULL ");
+        array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " IS NULL ");
         return $this;
     }
 
     public function field($field) {
-        array_push($this->fields, $field);
+        array_push($this->vars["fields"], $field);
         return $this;
     }
 
     public function search($keyword, $columns) {
         if ($keyword) {
             $where = " AND (1 != 1";
-            foreach ($columns as $column) $where .= " OR " . $this->columns[$column] . " LIKE '%" . $keyword . "%' " ;
+            foreach ($columns as $column) {
+                $where .= " OR " . $this->vars["columns"][$column] . " LIKE '%" . $keyword . "%' ";
+            }
             $where .= ") ";
             //$this->params["keyword"] = $keyword; // we must use pdo for preventing sql injection
-            array_push($this->wheres, $where);
+            array_push($this->vars["wheres"], $where);
         }
         return $this;
     }
@@ -304,141 +308,154 @@ class BaseModel {
         // if $comparator is IN
         if ($comparator == "IN" || $comparator == "IS" || $static) {
             if ($this->dbType == "mssql" && $value == "NOW()") $value = "GETDATE()";
-            array_push($this->wheres, " AND " . $this->columns[$column] . " $comparator " . $value);
+            array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " $comparator " . $value);
         }
         else {
-            array_push($this->wheres, " AND " . $this->columns[$column] . " " . $comparator . " :" . $column);
-            $this->params[$column] = $value; // we must use pdo for preventing sql injection
+            array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " " . $comparator . " :" . $column);
+            $this->vars["params"][$column] = $value; // we must use pdo for preventing sql injection
         }
         return $this;
     }
     public function orderBy($column, $order = "DESC") {
-        array_push($this->orderBysMSSQL, array($column, $order));
-        array_push($this->orderBys, array($this->columns[$column], $order));
+        array_push($this->vars["orderBysMSSQL"], array($column, $order));
+        array_push($this->vars["orderBys"], array($this->vars["columns"][$column], $order));
         return $this;
     }
 
     public function groupBy($column) {
-        array_push($this->orderBys, $this->columns[$column]);
+        array_push($this->vars["orderBys"], $this->vars["columns"][$column]);
         return $this;
     }
 
     public function limit($start, $length) {
-        $this->limit = array($start, $length);
+        $this->vars["limit"] = array($start, $length);
         return $this;
     }
 
-    public function column($columns) {
-        $this->customColumns = $columns;
-        return $this;
+
+    private function getFromsSql(){
+        $sqlFroms = array($this->table . " as a");
+        // TODO: add JOIN & ON
+        return join(" ", $sqlFroms);
     }
-
-    private function generateSelectSql() {
-        // generate sql here
-        #when there's foreign key, add one more prefix
-        $tables = array();
-        $columns = array();
-
-        array_push($tables, array("name" => $this->table, "column" => $this->columns)); // add foreign keys, one to many or many to one
-
-        $prefixIndex = 0;
+    private function getColumnsSql() {
         $sqlColumns = array();
-        $sqlTableNames = array();
-
-
-        if ($this->onlySelectedField) {
-            $sqlColumns = $this->fields;
-            array_push($sqlTableNames, $this->table);
+        $columns = array();
+        if ($this->vars["fields"]) array_push($sqlColumns, join(", ", $this->vars["fields"]));
+        foreach ($this->columns as $key => $val) {
+            array_push($this->vars["columns"], array($key => "a." . $val));
+            array_push($columns, "a." . $val . " as " . $key);
         }
-        else {
-            foreach ($tables as $table) {
-                $prefix = $this->prefixes[$prefixIndex];
-                foreach ($table["column"] as $key => $val) {
-                    if (count($this->customColumns) == 0 || in_array($key, $this->customColumns)) {
-                        array_push($columns, $prefix . "." . $val . " as " . $key);
-                    }
-                }
+        array_push($sqlColumns, join(", ", $columns));
+        // TODO: add joined columns
+        return join(", ", $sqlColumns);
+    }
 
-                array_push($sqlTableNames, $table["name"] . " as " . $prefix);
-                array_push($sqlColumns, join(", ", $columns));
-                if ($this->fields) array_push($sqlColumns, join(", ", $this->fields));
-                $prefixIndex++;
-            }
-        }
-
-        $sqlGroupBy = "";
-        if (sizeof($this->groupBys) > 0) {
+    private function getGroupBysSql() {
+        $sql = "";
+        if (sizeof($this->vars["groupBys"]) > 0) { // group by doesn't require prefix
             $groupBys = array();
-            foreach ($this->groupBys as $groupBy) {
+            foreach ($this->vars["groupBys"] as $groupBy) {
                 array_push($groupBys, join(" " , $groupBy));
             }
-            $sqlGroupBy = " GROUP BY " . join(", ", $groupBys);
+            $sql = " GROUP BY " . join(", ", $groupBys);
         }
+        return $sql;
+    }
 
+    private function getOrderBysSql() {
         $sqlOrderBy = "";
         $sqlOrderByMSSQL = "";
-        if (sizeof($this->orderBys) > 0) {
+        if (sizeof($this->vars["orderBys"]) > 0) { // order by doesn't require prefix
             $orderBys = array();
             $orderBysMSSQL = array();
-            foreach ($this->orderBys as $orderBy) {
+            foreach ($this->vars["orderBys"] as $orderBy) {
                 array_push($orderBys, join(" " , $orderBy));
             }
-            foreach ($this->orderBysMSSQL as $orderBy) {
+            foreach ($this->vars["orderBysMSSQL"] as $orderBy) {
                 array_push($orderBysMSSQL, join(" " , $orderBy));
             }
             $sqlOrderBy = " ORDER BY " . join(", ", $orderBys);
             $sqlOrderByMSSQL = " ORDER BY " . join(", ", $orderBysMSSQL);
         }
+        return $sqlOrderBy;
+    }
 
+    private function getWheresSql() {
         $sqlWhere = "";
-        if (sizeof($this->wheres) > 0) {
-            $sqlWhere = " WHERE 1=1 " . join(" ", $this->wheres);
+        if (sizeof($this->vars["wheres"]) > 0) {
+            $sqlWhere = " WHERE 1=1 " . join(" ", $this->vars["wheres"]);
         }
+        return $sqlWhere;
+    }
 
+    private function getLimitSql() {
         $sqlLimit = "";
-        $selectTop = "";
-        if (sizeof($this->limit) > 0) { // only for sql server 2012+
-            if ($this->dbType == "mssql") {
-                if ($this->limit[0] == 0) {
-                    $selectTop = "TOP " . $this->limit[1] . " ";
-                }
-                else if(!$this->onlySelectedField){
-                    if (!$sqlOrderBy) $sqlOrderBy = " ORDER BY " . $this->pk . " DESC ";
-                    $sql = "SELECT TOP {$this->limit[1]} * FROM (SELECT ROW_NUMBER() OVER ($sqlOrderBy) AS rowNumber," .
-                        join(",", $sqlColumns) . " FROM " . join(",", $sqlTableNames) . $sqlWhere .
-                        ") _tmpInlineView WHERE rowNumber > {$this->limit[0]} " . $sqlGroupBy . $sqlOrderByMSSQL;
-                    //$sqlLimit = " OFFSET " . $this->limit[0] . " ROWS FETCH NEXT " . $this->limit[1] . " ROWS ONLY";
-                    return $sql;
-                }
-            }
-            if ($this->dbType == "mysql") $sqlLimit = " LIMIT " . $this->limit[0] . ", " . $this->limit[1];
+//        $selectTop = "";
+        if (sizeof($this->vars["limit"]) > 0) { // only for sql server 2012+
+            if ($this->dbType == "mysql") $sqlLimit = " LIMIT " . $this->vars["limit"][0] . ", " . $this->vars["limit"][1];
+//            else if ($this->dbType == "mssql") { // not tested from modified
+//                if ($this->vars["limit"][0] == 0) {
+//                    $selectTop = "TOP " . $this->vars["limit"][1] . " ";
+//                }
+//                else {
+//                    if (!$sqlOrderBy) $sqlOrderBy = " ORDER BY " . $this->pk . " DESC ";
+//                    $sql = "SELECT TOP {$this->vars["limit"][1]} * FROM (SELECT ROW_NUMBER() OVER ($sqlOrderBy) AS rowNumber," .
+//                        $sqlColumns . " FROM " . join(" ", $sqlFroms) . $sqlWhere .
+//                        ") _tmpInlineView WHERE rowNumber > {$this->vars["limit"][0]} " . $sqlGroupBy . $sqlOrderByMSSQL;
+//                    //$sqlLimit = " OFFSET " . $this->limit[0] . " ROWS FETCH NEXT " . $this->limit[1] . " ROWS ONLY";
+//                    return $sql;
+//                }
+//            }
         }
+        return $sqlLimit;
 
-        $sql = "SELECT " . $selectTop . join(",", $sqlColumns) . " FROM " .  join(",", $sqlTableNames) . $sqlWhere;
-        if(!$this->onlySelectedField) $sql .= $sqlGroupBy . $sqlOrderBy . $sqlLimit; #add where and order by and limit
+    }
+
+    private function generateSelectSql() {
+
+        $sqlFroms = $this->getFromsSql();
+        $sqlColumns = $this->getColumnsSql();
+        $sqlGroupBy = $this->getGroupBysSql();
+        $sqlOrderBy = $this->getOrderBysSql();
+        $sqlWhere = $this->getWheresSql();
+        $sqlLimit = $this->getLimitSql();
+
+        $sql = "SELECT " . $sqlColumns . " FROM " . $sqlFroms . $sqlWhere . $sqlGroupBy . $sqlOrderBy . $sqlLimit;
+
 #        echo $sql;
 #        error_log($sql);
         return $sql;
     }
 
-    private function resetVariables() {
-        $this->params = array();
-        $this->customColumns = array();
-        $this->fields = array();
-        $this->wheres = array();
-        $this->orderBys = array();
-        $this->groupBys = array();
-        $this->limit = array();
-        $this->onlySelectedField = false;
+    private function resetVariables()
+    {
+        $this->varsPrev = $this->vars;
+        $this->initVars();
     }
+
+    private function initVars() {
+        $this->vars = array(
+            "fields" => array(), // custom fields (max(*) as maxVal, )
+            "columns" => array(), // mapping columns and names (rid => a.id)
+            "wheres" => array(),
+            "orderBys" => array(),
+            "orderBysMSSQL" => array(),
+            "groupBys" => array(),
+            "limit" => array(),
+            "params" => array(),
+            "joins" => array(),
+        );
+    }
+
+
 
     public function paginate(BasePaginate $paginate){
         $this->limit($paginate->startAt, $paginate->paginationSize);
         $totalCount = $this->selectCount();
         $paginate->setTotalCount($totalCount);
         $sql = $this->generateSelectSql(null);
-        $paginate->setList($this->fetchAll($sql, $this->params));
-        $this->resetVariables();
+        $paginate->setList($this->fetchAll($sql, $this->vars["params"]));
         return $paginate;
     }
 
@@ -448,7 +465,7 @@ class BaseModel {
      */
     public function select() {
         $sql = $this->generateSelectSql();
-        $results = $this->fetch($sql, $this->params);        // reset variables for next use
+        $results = $this->fetch($sql, $this->vars["params"]);        // reset variables for next use
         $this->resetVariables();
         return $results;
     }
@@ -457,24 +474,16 @@ class BaseModel {
      * @return BaseModel
      */
     public function selectCount() {
-        $fields = $this->fields;
-        $this->fields = array("count(*) as totalCount");
-        $this->onlySelectedField = true;
-        $sql = $this->generateSelectSql();
-        $result = $this->fetch($sql, $this->params);        // reset variables for next use
-        $this->onlySelectedField = false;
-        $this->fields = $fields;
+        $sqlFroms = $this->getFromsSql();
+        $sqlWhere = $this->getWheresSql();
+        $sql = "SELECT count(*) AS totalCount FROM " . $sqlFroms . $sqlWhere;
+        $result = $this->fetch($sql, $this->vars["params"]);        // reset variables for next use
         return $result->totalCount;
-    }
-
-    public function selectField() {
-        $this->onlySelectedField = true;
-        return $this->select();
     }
 
     public function selectAll() {
         $sql = $this->generateSelectSql();
-        $results = $this->fetchAll($sql, $this->params);        // reset variables for next use
+        $results = $this->fetchAll($sql, $this->vars["params"]);        // reset variables for next use
         $this->resetVariables();
         return $results;
     }
