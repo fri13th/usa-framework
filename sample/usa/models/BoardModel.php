@@ -1,5 +1,0 @@
-<?
-
-class BoardModel extends BaseModel {
-
-}
