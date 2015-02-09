@@ -2,8 +2,11 @@
 
 function mainView () {
 ?>
-<body>
-main page
-</body>
+
+
+    <h1>Hello, World!</h1>
+
+
+
 <?
 }

@@ -1,0 +1,19 @@
+{
+    "name": "fri13th/usa-framework",
+    "type": "library",
+    "description": "Minimal MVC Framework",
+    "keywords": ["framework", "MVC"],
+    "homepage": "http://github.com/fri13th/usa-framework",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Jonghee Park",
+            "email": "tenderain@gmail.com",
+            "homepage": "http://fri13th.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=5.2.0"
+    }
+}

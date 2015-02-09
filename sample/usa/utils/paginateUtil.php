@@ -1,7 +1,7 @@
 <?
 
 
-class FlatPaginate extends BasePaginate {
+class SimpleFlatPaginate extends BasePaginate {
 
     function setTotalCount($totalCount) {
         $this->totalCount = $totalCount;
@@ -91,7 +91,7 @@ class FlatPaginate extends BasePaginate {
 
 }
 
-class BootstrapPaginate extends BasePaginate {
+class SimpleBootstrapPaginate extends BasePaginate {
 
     function setTotalCount($totalCount) {
         $this->totalCount = $totalCount;

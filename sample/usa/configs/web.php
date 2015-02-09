@@ -4,6 +4,7 @@
  * Date: 2013/02/17 10:27
  */
 
+
 $config = new UsaConfig();
 $config->domain = filter_input(INPUT_SERVER, "HTTP_HOST");
 $config->db_type = "mysql";
@@ -32,12 +33,6 @@ $auth_options = array(
 
 $GLOBALS["USA_FRAMEWORK"] = new Usa($config);
 
-/**
- * @return Usa
- */
-function getUsa() {
-    return $GLOBALS["USA_FRAMEWORK"];
-}
 $usa = getUsa();
 $usa->setBase(substr(dirname(__FILE__), 0, -11));
 $usa->middleware("simpleAuth", $auth_options);
