@@ -366,7 +366,10 @@ class BaseModel {
             foreach($this->joins as $join) {
                 $ons = array();
                 foreach ($join->conditions as $cond) {
-                    array_push($ons, $this->prefixedColumns[$cond[0]] . " " . $cond[1] . " " . $this->prefixedColumns[$cond[2]]);
+                    $col1 = $this->prefixedColumns[$cond[0]];
+                    $col2 = $this->prefixedColumns[$cond[2]];
+                    if (!$col2) $col2 = $cond[2];
+                    array_push($ons, $col1 . " " . $cond[1] . " " . $col2);
                 }
                 array_push($sqlFroms, $join->joinType . " JOIN " . $join->table . " AS " . $join->prefix . " ON " . join(" AND ", $ons));
             }
@@ -626,15 +629,21 @@ class BaseJoin {
         $this->prefix = $prefix;
         $this->table = $table;
         $this->columns = $columns;
+        foreach($this->columns as $key => $val) {
+            $this->prefixedColumns[$key] = $this->prefix . "." . $val;
+        }
+
         if ($onEqConds) $this->onEq($onEqConds[0], $onEqConds[1]);
     }
 
     public function onEq($cond1, $cond2) {
         $this->on($cond1, "=", $cond2);
+        return $this;
     }
 
     public function on($cond1, $comparator,  $cond2) {
         array_push($this->conditions, array($cond1, $comparator, $cond2));
+        return $this;
     }
 
 }
