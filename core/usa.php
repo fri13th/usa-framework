@@ -30,7 +30,7 @@ class UsaConfig {
         $this->db_url = "mysql:host=localhost;dbname=usa;charset=utf8";
         $this->db_userid = "root";
         $this->db_password = "";
-        $this->db_options = array(PDO::ATTR_PERSISTENT => false);
+        $this->db_options = array(PDO::ATTR_PERSISTENT => false, PDO::ERRMODE_EXCEPTION);
         $this->middlewares = array();
     }
 }
@@ -197,8 +197,9 @@ class BaseModel {
     /** @var $statement PDOStatement */
     protected $statement;
     protected $dbType;
+    protected $paramSuffix;
 
-    protected $jsonExclusives = array("pdo", "statement", "dbType", "jsonExclusive", "jsonIncludes", "table", "pk",
+    protected $jsonExclusives = array("pdo", "statement", "dbType", "paramSuffix", "jsonExclusive", "jsonIncludes", "table", "pk",
         "columns", "prefixedColumns", "insertDateField", "updateDateField", "vars", "varsPrev", "joins"); // exclude model specific fields
     protected $jsonIncludes = array();
 
@@ -233,6 +234,7 @@ class BaseModel {
         /** $usa Usa */$usa = getUsa();
         $this->pdo = $usa->getPdo();
         $this->dbType = $usa->config->db_type;
+        $this->paramSuffix = 0;
         foreach($this->columns as $key => $val) {
             $this->prefixedColumns[$key] = "a." . $val;
         }
@@ -286,6 +288,16 @@ class BaseModel {
         return $this->pdo->rollBack();
     }
 
+    public function whereAndBegin() {
+        array_push($this->vars["wheres"], "AND ( 1 != 1 ");
+        return $this;
+    }
+
+    public function whereAndEnd() {
+        array_push($this->vars["wheres"], ") ");
+        return $this;
+    }
+
     public function whereOrBegin() {
         array_push($this->vars["wheres"], "OR ( 1 = 1 ");
         return $this;
@@ -332,15 +344,17 @@ class BaseModel {
         return $this;
     }
 
-    public function where($column, $comparator, $value, $static = false) {
+    public function where($column, $comparator, $value, $static = false) { // TODO
         // if $comparator is IN
+        $this->paramSuffix++;
+        $valueKey = $column . "___" . $this->paramSuffix;
         if ($comparator == "IN" || $comparator == "IS" || $static) {
             if ($this->dbType == "mssql" && $value == "NOW()") $value = "GETDATE()";
             array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " " . $comparator . " " . $value);
         }
         else {
-            array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " " . $comparator . " :" . $column);
-            $this->vars["params"][$column] = $value; // we must use pdo for preventing sql injection
+            array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " " . $comparator . " :" . $valueKey);
+            $this->vars["params"][$valueKey] = $value; // we must use pdo for preventing sql injection
         }
         return $this;
     }
@@ -357,6 +371,11 @@ class BaseModel {
 
     public function limit($start, $length) {
         $this->vars["limit"] = array($start, $length);
+        return $this;
+    }
+
+    public function column($columns) { // TODO
+        $this->customColumns = $columns;
         return $this;
     }
 
