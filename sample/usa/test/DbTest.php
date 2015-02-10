@@ -1,18 +1,18 @@
 <?php
+include "../../../core/usa.php";
+include "../configs/web.php";
+$usa = getUsa();
+$usa->model("board");
 
 class DbTest extends PHPUnit_Framework_TestCase {
     protected $usa;
 
     protected function setUp() {
-        include "../../../core/usa.php";
-        include "../configs/web.php";
-        /** @var Usa */$this->usa = getUsa();
     }
 
 
     public function testSelectTables() {
         $usa = getUsa();
-        $usa->model("board");
         $boardDao = new BoardModel();
         $boards = $boardDao->selectAll();
         $this->assertEquals(2, count($boards));
@@ -41,10 +41,12 @@ class DbTest extends PHPUnit_Framework_TestCase {
     // may we use insert, update, delete
 
     public function testJoin() {
-        $usa = getUsa();
-        $usa->model("board");
         $boardJoinDao = new BoardModel();
-        $boardJoinDao.join(null,null, null, null, null);
+        $typeJoin = new BaseJoin("b", "u_type", "LEFT", array("typeCode" => "type_code", "typeTitle", "title"), array("boardType", "typeCode"));
+        // we may add more join options
+        $boardJoinDao->join($typeJoin);
+
+        $boardJoinDao->selectAll();
 
     }
 }

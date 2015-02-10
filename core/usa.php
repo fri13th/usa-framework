@@ -192,7 +192,8 @@ $usaError = new UsaError();
 class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
-    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table"); // exclude personal information field
+    public $joins = array();
+    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table", "joins"); // exclude personal information field
     public $jsonIncludes = array();
 
     protected $pdo;
@@ -514,6 +515,7 @@ class BaseModel {
 
     public function selectAll() {
         $sql = $this->generateSelectSql();
+        echo $sql;
         $results = $this->fetchAll($sql, $this->vars["params"]);        // reset variables for next use
         $this->resetVariables();
         return $results;
@@ -596,7 +598,9 @@ class BaseModel {
 
     // join is not just a where param, it's a part of data structure,
     // don't reset join param at all.. it must be set in the first dao created
-    public function join($prefix, $table, $joinType, $columns, $conditions){
+    public function join($join){
+
+        array_push($this->joins, $join);
 
     }
 
@@ -609,6 +613,17 @@ class BaseJoin {
     public $columns = array();
     public $conditions = array();
 
+    public function __construct($joinType, $prefix, $table, $columns, $onEqConditions = null) {
+        $this->joinType = $joinType;
+        $this->prefix = $prefix;
+        $this->table = $table;
+        $this->columns = $columns;
+        if ($onEqConditions) $this->conditions = array($onEqConditions[0], "=", $onEqConditions[1]);
+    }
+
+    public function on($cond1, $comparator,  $cond2) {
+        array_push($this->conditions, array($cond1, $comparator, $cond2));
+    }
 
 }
 
