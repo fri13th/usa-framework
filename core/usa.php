@@ -192,20 +192,21 @@ $usaError = new UsaError();
 class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
-    /** @var BaseJoin[]  */
-    public $joins = array();
-    public $joinColumns = array();
-    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table", "joins", "joinColumns"); // exclude personal information field
-    public $jsonIncludes = array();
 
     protected $pdo;
     /** @var $statement PDOStatement */
     protected $statement;
     protected $dbType;
 
+    protected $jsonExclusives = array("pdo", "statement", "dbType", "jsonExclusive", "jsonIncludes", "table", "pk",
+        "columns", "prefixedColumns", "insertDateField", "updateDateField", "vars", "varsPrev", "joins"); // exclude model specific fields
+    protected $jsonIncludes = array();
+
+
     protected $table; // we don't use foreign key, use pure sql when you need it
     protected $pk;
     protected $columns = array();
+    protected $prefixedColumns = array();
 
     protected $insertDateField = "";
     protected $updateDateField = "";
@@ -213,12 +214,28 @@ class BaseModel {
 
     protected $vars = array();
     protected $varsPrev = array(); // save prev variables, so don't reset
+    /** @var BaseJoin[]  */
+    protected $joins = array();
 
+    private function initVars() {
+        $this->vars = array(
+            "fields" => array(), // custom fields (max(*) as maxVal, )
+            "wheres" => array(),
+            "orderBys" => array(),
+            "groupBys" => array(),
+            "limit" => array(),
+            "params" => array(),
+            "joins" => array(),
+        );
+    }
 
     function __construct() {
         /** $usa Usa */$usa = getUsa();
         $this->pdo = $usa->getPdo();
         $this->dbType = $usa->config->db_type;
+        foreach($this->columns as $key => $val) {
+            $this->prefixedColumns[$key] = "a." . $val;
+        }
         $this->initVars();
     }
 
@@ -319,22 +336,22 @@ class BaseModel {
         // if $comparator is IN
         if ($comparator == "IN" || $comparator == "IS" || $static) {
             if ($this->dbType == "mssql" && $value == "NOW()") $value = "GETDATE()";
-            array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " " . $comparator . " " . $value);
+            array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " " . $comparator . " " . $value);
         }
         else {
-            array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " " . $comparator . " :" . $column);
+            array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " " . $comparator . " :" . $column);
             $this->vars["params"][$column] = $value; // we must use pdo for preventing sql injection
         }
         return $this;
     }
+
     public function orderBy($column, $order = "DESC") {
-        //array_push($this->vars["orderBysMSSQL"], array($column, $order));
-        array_push($this->vars["orderBys"], array($this->vars["columns"][$column], $order));
+        array_push($this->vars["orderBys"], array($column, $order));
         return $this;
     }
 
     public function groupBy($column) {
-        array_push($this->vars["orderBys"], $this->vars["columns"][$column]);
+        array_push($this->vars["groupBys"], $column);
         return $this;
     }
 
@@ -343,38 +360,25 @@ class BaseModel {
         return $this;
     }
 
-
-    private function getColumn($key){
-        if ($this->columns[$key]) return "a." . $this->columns[$key];
-        if ($this->joinColumns[$key]) return $this->joinColumns[$key];
-        return ""; // not desirable result
-    }
     private function getFromsSql(){
         $sqlFroms = array($this->table . " as a ");
         if (count($this->joins) > 0) {
             foreach($this->joins as $join) {
                 $ons = array();
                 foreach ($join->conditions as $cond) {
-                    array_push($ons, $this->getColumn($cond[0]) . " " . $cond[1] . " " . $this->getColumn($cond[2]));
+                    array_push($ons, $this->prefixedColumns[$cond[0]] . " " . $cond[1] . " " . $this->prefixedColumns[$cond[2]]);
                 }
-
-                array_push($sqlFroms, $join->joinType . " JOIN " . $join->table . " as " . $join->prefix . " ON " . join(" AND ", $ons));
+                array_push($sqlFroms, $join->joinType . " JOIN " . $join->table . " AS " . $join->prefix . " ON " . join(" AND ", $ons));
             }
         }
-
         return join(" ", $sqlFroms);
     }
     private function getColumnsSql() {
         $sqlColumns = array();
         $columns = array();
         if ($this->vars["fields"]) array_push($sqlColumns, join(", ", $this->vars["fields"]));
-        foreach ($this->columns as $key => $val) {
-            array_push($this->vars["columns"], array($key => "a." . $val));
-            array_push($columns, "a." . $val . " as " . $key);
-        }
-        foreach ($this->joinColumns as $key => $val) {
-            array_push($this->vars["columns"], array($key => $val));
-            array_push($columns, $val . " as " . $key);
+        foreach ($this->prefixedColumns as $key => $val) {
+            array_push($columns, $val . " AS " . $key);
         }
 
         array_push($sqlColumns, join(", ", $columns));
@@ -384,29 +388,19 @@ class BaseModel {
     private function getGroupBysSql() {
         $sql = "";
         if (sizeof($this->vars["groupBys"]) > 0) { // group by doesn't require prefix
-            $groupBys = array();
-            foreach ($this->vars["groupBys"] as $groupBy) {
-                array_push($groupBys, join(" " , $groupBy));
-            }
-            $sql = " GROUP BY " . join(", ", $groupBys);
+            $sql = " GROUP BY " . join(", ", $this->vars["groupBys"]);
         }
         return $sql;
     }
 
     private function getOrderBysSql() {
         $sqlOrderBy = "";
-        //$sqlOrderByMSSQL = "";
         if (sizeof($this->vars["orderBys"]) > 0) { // order by doesn't require prefix
             $orderBys = array();
-            $orderBysMSSQL = array();
             foreach ($this->vars["orderBys"] as $orderBy) {
                 array_push($orderBys, join(" " , $orderBy));
             }
-//            foreach ($this->vars["orderBysMSSQL"] as $orderBy) {
-//                array_push($orderBysMSSQL, join(" " , $orderBy));
-//            }
             $sqlOrderBy = " ORDER BY " . join(", ", $orderBys);
-            //$sqlOrderByMSSQL = " ORDER BY " . join(", ", $orderBysMSSQL);
         }
         return $sqlOrderBy;
     }
@@ -464,20 +458,6 @@ class BaseModel {
         $this->initVars();
     }
 
-    private function initVars() {
-        $this->vars = array(
-            "fields" => array(), // custom fields (max(*) as maxVal, )
-            "columns" => array(), // mapping columns and names (rid => a.id)
-            "wheres" => array(),
-            "orderBys" => array(),
-            //"orderBysMSSQL" => array(),
-            "groupBys" => array(),
-            "limit" => array(),
-            "params" => array(),
-            "joins" => array(),
-        );
-    }
-
     public function paginateMultiple(BasePaginate $paginate){
         $this->limit($paginate->startAt, $paginate->paginationSize);
         $this->criteria($paginate->criteria);
@@ -516,7 +496,6 @@ class BaseModel {
     public function selectCount() {
         $sqlFroms = $this->getFromsSql();
         $sqlWhere = $this->getWheresSql();
-
         $sql = "SELECT count(*) AS totalCount " . " FROM " . $sqlFroms . $sqlWhere;
         $result = $this->fetch($sql, $this->vars["params"]);        // reset variables for next use
         return $result->totalCount;
@@ -531,6 +510,7 @@ class BaseModel {
 
         $sql = "SELECT " . $field . " FROM " . $sqlFroms . $sqlWhere . $sqlGroupBy . $sqlOrderBy . $sqlLimit;
         $result = $this->fetchAll($sql, $this->vars["params"]);        // reset variables for next use
+        $this->resetVariables();
         return $result;
     }
 
@@ -585,7 +565,7 @@ class BaseModel {
                 }
             }
             $sql = "INSERT " . "INTO "  . $this->table . " (" . join(", ", $columns). ") VALUES (" . join(", ", $values). ")";
-            error_log($sql);
+            #error_log($sql);
             #error_log(join(", ", $params));
             $this->exec($sql, $params);
             if ($this->pk) $this->{$this->pk} = $this->lastInsertId($this->pk);
@@ -604,7 +584,7 @@ class BaseModel {
 
     public function plainObject() {
         $obj = array();
-        $columns = $this->columns + $this->jsonIncludes;
+        $columns = $this->prefixedColumns + $this->jsonIncludes;
         foreach ($columns as $key => $value) {
             if (!in_array($key, $this->jsonExclusives)) $obj[$key] = $this->$key;
         }
@@ -614,7 +594,7 @@ class BaseModel {
     public function keyword($keyword){} // almost abstract
 
     public function copy($obj){
-        foreach ($this->columns as $key => $val) {
+        foreach ($this->prefixedColumns as $key => $val) {
             if (property_exists($obj, $key)) $this->$key = $obj->$key;
         }
     }
@@ -626,9 +606,10 @@ class BaseModel {
      */
     public function join($join){
         foreach ($join->columns as $key => $val) {
-            $this->joinColumns[$key] = $join->prefix . "." . $val;
+            $this->prefixedColumns[$key] = $join->prefix . "." . $val;
         }
         array_push($this->joins, $join);
+        return $this;
     }
 
 }
