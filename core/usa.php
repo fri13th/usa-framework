@@ -120,7 +120,7 @@ class Usa {
         }
         return $this->pdo;
     }
-    public function jsonResponse($jsonObj) {
+    public function jsonResponse($obj) {
         if (is_array($obj) && is_a($obj[0], "BaseModel")) $obj = json_encode(array_map(function($i){return $i->plainObject();}, $obj));
         else if (is_a($obj, "BaseModel")) $obj = $obj->json();
         else if (is_a($obj, "BasePaginate")) $obj = $obj->json();
@@ -192,8 +192,10 @@ $usaError = new UsaError();
 class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
+    /** @var BaseJoin[]  */
     public $joins = array();
-    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table", "joins"); // exclude personal information field
+    public $joinColumns = array();
+    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table", "joins", "joinColumns"); // exclude personal information field
     public $jsonIncludes = array();
 
     protected $pdo;
@@ -212,13 +214,6 @@ class BaseModel {
     protected $vars = array();
     protected $varsPrev = array(); // save prev variables, so don't reset
 
-//    protected $fields = array();
-//    protected $wheres = array();
-//    protected $orderBys = array();
-//    protected $orderBysMSSQL = array();
-//    protected $groupBys = array();
-//    protected $limit = array();
-//    protected $params = array();
 
     function __construct() {
         /** $usa Usa */$usa = getUsa();
@@ -324,7 +319,7 @@ class BaseModel {
         // if $comparator is IN
         if ($comparator == "IN" || $comparator == "IS" || $static) {
             if ($this->dbType == "mssql" && $value == "NOW()") $value = "GETDATE()";
-            array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " $comparator " . $value);
+            array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " " . $comparator . " " . $value);
         }
         else {
             array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " " . $comparator . " :" . $column);
@@ -333,7 +328,7 @@ class BaseModel {
         return $this;
     }
     public function orderBy($column, $order = "DESC") {
-        array_push($this->vars["orderBysMSSQL"], array($column, $order));
+        //array_push($this->vars["orderBysMSSQL"], array($column, $order));
         array_push($this->vars["orderBys"], array($this->vars["columns"][$column], $order));
         return $this;
     }
@@ -349,9 +344,24 @@ class BaseModel {
     }
 
 
+    private function getColumn($key){
+        if ($this->columns[$key]) return "a." . $this->columns[$key];
+        if ($this->joinColumns[$key]) return $this->joinColumns[$key];
+        return ""; // not desirable result
+    }
     private function getFromsSql(){
-        $sqlFroms = array($this->table . " as a");
-        // TODO: add JOIN & ON
+        $sqlFroms = array($this->table . " as a ");
+        if (count($this->joins) > 0) {
+            foreach($this->joins as $join) {
+                $ons = array();
+                foreach ($join->conditions as $cond) {
+                    array_push($ons, $this->getColumn($cond[0]) . " " . $cond[1] . " " . $this->getColumn($cond[2]));
+                }
+
+                array_push($sqlFroms, $join->joinType . " JOIN " . $join->table . " as " . $join->prefix . " ON " . join(" AND ", $ons));
+            }
+        }
+
         return join(" ", $sqlFroms);
     }
     private function getColumnsSql() {
@@ -362,8 +372,12 @@ class BaseModel {
             array_push($this->vars["columns"], array($key => "a." . $val));
             array_push($columns, "a." . $val . " as " . $key);
         }
+        foreach ($this->joinColumns as $key => $val) {
+            array_push($this->vars["columns"], array($key => $val));
+            array_push($columns, $val . " as " . $key);
+        }
+
         array_push($sqlColumns, join(", ", $columns));
-        // TODO: add joined columns
         return join(", ", $sqlColumns);
     }
 
@@ -381,18 +395,18 @@ class BaseModel {
 
     private function getOrderBysSql() {
         $sqlOrderBy = "";
-        $sqlOrderByMSSQL = "";
+        //$sqlOrderByMSSQL = "";
         if (sizeof($this->vars["orderBys"]) > 0) { // order by doesn't require prefix
             $orderBys = array();
             $orderBysMSSQL = array();
             foreach ($this->vars["orderBys"] as $orderBy) {
                 array_push($orderBys, join(" " , $orderBy));
             }
-            foreach ($this->vars["orderBysMSSQL"] as $orderBy) {
-                array_push($orderBysMSSQL, join(" " , $orderBy));
-            }
+//            foreach ($this->vars["orderBysMSSQL"] as $orderBy) {
+//                array_push($orderBysMSSQL, join(" " , $orderBy));
+//            }
             $sqlOrderBy = " ORDER BY " . join(", ", $orderBys);
-            $sqlOrderByMSSQL = " ORDER BY " . join(", ", $orderBysMSSQL);
+            //$sqlOrderByMSSQL = " ORDER BY " . join(", ", $orderBysMSSQL);
         }
         return $sqlOrderBy;
     }
@@ -456,7 +470,7 @@ class BaseModel {
             "columns" => array(), // mapping columns and names (rid => a.id)
             "wheres" => array(),
             "orderBys" => array(),
-            "orderBysMSSQL" => array(),
+            //"orderBysMSSQL" => array(),
             "groupBys" => array(),
             "limit" => array(),
             "params" => array(),
@@ -464,7 +478,7 @@ class BaseModel {
         );
     }
 
-    public function paginateMultiple(BasePaginate $paginate){ // TODO: obsolete
+    public function paginateMultiple(BasePaginate $paginate){
         $this->limit($paginate->startAt, $paginate->paginationSize);
         $this->criteria($paginate->criteria);
         $this->keyword($paginate->keyword);
@@ -502,20 +516,29 @@ class BaseModel {
     public function selectCount() {
         $sqlFroms = $this->getFromsSql();
         $sqlWhere = $this->getWheresSql();
+
         $sql = "SELECT count(*) AS totalCount " . " FROM " . $sqlFroms . $sqlWhere;
         $result = $this->fetch($sql, $this->vars["params"]);        // reset variables for next use
         return $result->totalCount;
     }
 
-    public function selectOnlyField($field) { // selectOnlyField("region_1 AS region, COUNT(region_1) AS totalCount")
-        // select
-        $list = $this->selectAll();
-        return $list;
+    public function selectOnlyField($field) { // somewhat resemble like generateSelectSql
+        $sqlFroms = $this->getFromsSql();
+        $sqlGroupBy = $this->getGroupBysSql();
+        $sqlOrderBy = $this->getOrderBysSql();
+        $sqlWhere = $this->getWheresSql();
+        $sqlLimit = $this->getLimitSql();
+
+        $sql = "SELECT " . $field . " FROM " . $sqlFroms . $sqlWhere . $sqlGroupBy . $sqlOrderBy . $sqlLimit;
+        $result = $this->fetchAll($sql, $this->vars["params"]);        // reset variables for next use
+        return $result;
     }
 
+    /**
+     * @return BaseModel[]
+     */
     public function selectAll() {
         $sql = $this->generateSelectSql();
-        echo $sql;
         $results = $this->fetchAll($sql, $this->vars["params"]);        // reset variables for next use
         $this->resetVariables();
         return $results;
@@ -598,10 +621,14 @@ class BaseModel {
 
     // join is not just a where param, it's a part of data structure,
     // don't reset join param at all.. it must be set in the first dao created
+    /**
+     * @param $join BaseJoin
+     */
     public function join($join){
-
+        foreach ($join->columns as $key => $val) {
+            $this->joinColumns[$key] = $join->prefix . "." . $val;
+        }
         array_push($this->joins, $join);
-
     }
 
 }
@@ -613,12 +640,16 @@ class BaseJoin {
     public $columns = array();
     public $conditions = array();
 
-    public function __construct($joinType, $prefix, $table, $columns, $onEqConditions = null) {
+    public function __construct($joinType, $prefix, $table, $columns, $onEqConds = null) {
         $this->joinType = $joinType;
         $this->prefix = $prefix;
         $this->table = $table;
         $this->columns = $columns;
-        if ($onEqConditions) $this->conditions = array($onEqConditions[0], "=", $onEqConditions[1]);
+        if ($onEqConds) $this->onEq($onEqConds[0], $onEqConds[1]);
+    }
+
+    public function onEq($cond1, $cond2) {
+        $this->on($cond1, "=", $cond2);
     }
 
     public function on($cond1, $comparator,  $cond2) {
