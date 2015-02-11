@@ -27,7 +27,7 @@ class UsaConfig {
         $this->data = array();
         $this->debug = true;
         $this->debug_mode = "local";
-        $this->db_url = "mysql:host=localhost;dbname=usa;charset=utf8";
+        $this->db_url = "mysql:host=localhost;dbname=usagidb;charset=utf8";
         $this->db_userid = "root";
         $this->db_password = "";
         $this->db_options = array(PDO::ATTR_PERSISTENT => false, PDO::ERRMODE_EXCEPTION);
@@ -203,7 +203,6 @@ class BaseModel {
         "columns", "prefixedColumns", "insertDateField", "updateDateField", "vars", "varsPrev", "joins"); // exclude model specific fields
     protected $jsonIncludes = array();
 
-
     protected $table; // we don't use foreign key, use pure sql when you need it
     protected $pk;
     protected $columns = array();
@@ -211,7 +210,6 @@ class BaseModel {
 
     protected $insertDateField = "";
     protected $updateDateField = "";
-
 
     protected $vars = array();
     protected $varsPrev = array(); // save prev variables, so don't reset
@@ -326,11 +324,6 @@ class BaseModel {
         return $this;
     }
 
-    public function field($field) {
-        array_push($this->vars["fields"], $field);
-        return $this;
-    }
-
     public function search($keyword, $columns) {
         if ($keyword) {
             $where = " AND (1 != 1";
@@ -344,38 +337,36 @@ class BaseModel {
         return $this;
     }
 
-    public function where($column, $comparator, $value, $static = false) { // TODO
+    public function where($column, $comparator, $value, $static = false) {
         // if $comparator is IN
         $this->paramSuffix++;
         $valueKey = $column . "___" . $this->paramSuffix;
         if ($comparator == "IN" || $comparator == "IS" || $static) {
             if ($this->dbType == "mssql" && $value == "NOW()") $value = "GETDATE()";
-            array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " " . $comparator . " " . $value);
+            array_push($this->vars["wheres"], " AND " . $this->getPrefixedColumn($column) . " " . $comparator . " " . $this->getPrefixedColumn($value));
         }
         else {
-            array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " " . $comparator . " :" . $valueKey);
+            array_push($this->vars["wheres"], " AND " . $this->getPrefixedColumn($column) . " " . $comparator . " :" . $valueKey);
             $this->vars["params"][$valueKey] = $value; // we must use pdo for preventing sql injection
         }
         return $this;
     }
 
+    private function getPrefixedColumn($column) {
+        return $this->prefixedColumns[$column] ? $this->prefixedColumns[$column] : $column;
+    }
     public function orderBy($column, $order = "DESC") {
-        array_push($this->vars["orderBys"], array($column, $order));
+        array_push($this->vars["orderBys"], array($this->getPrefixedColumn($column), $order));
         return $this;
     }
 
     public function groupBy($column) {
-        array_push($this->vars["groupBys"], $column);
+        array_push($this->vars["groupBys"], $this->getPrefixedColumn($column));
         return $this;
     }
 
     public function limit($start, $length) {
         $this->vars["limit"] = array($start, $length);
-        return $this;
-    }
-
-    public function column($columns) { // TODO
-        $this->customColumns = $columns;
         return $this;
     }
 
@@ -385,16 +376,14 @@ class BaseModel {
             foreach($this->joins as $join) {
                 $ons = array();
                 foreach ($join->conditions as $cond) {
-                    $col1 = $this->prefixedColumns[$cond[0]];
-                    $col2 = $this->prefixedColumns[$cond[2]];
-                    if (!$col2) $col2 = $cond[2];
-                    array_push($ons, $col1 . " " . $cond[1] . " " . $col2);
+                    array_push($ons, $this->getPrefixedColumn($cond[0]) . " " . $cond[1] . " " . $this->getPrefixedColumn($cond[2]));
                 }
                 array_push($sqlFroms, $join->joinType . " JOIN " . $join->table . " AS " . $join->prefix . " ON " . join(" AND ", $ons));
             }
         }
         return join(" ", $sqlFroms);
     }
+
     private function getColumnsSql() {
         $sqlColumns = array();
         $columns = array();
@@ -474,8 +463,7 @@ class BaseModel {
         return $sql;
     }
 
-    private function resetVariables()
-    {
+    private function resetVariables() {
         $this->varsPrev = $this->vars;
         $this->initVars();
     }
@@ -523,7 +511,7 @@ class BaseModel {
         return $result->totalCount;
     }
 
-    public function selectOnlyField($field) { // somewhat resemble like generateSelectSql
+    public function selectFieldAll($field) { // field doesn't support group by order by where... it may be changed
         $sqlFroms = $this->getFromsSql();
         $sqlGroupBy = $this->getGroupBysSql();
         $sqlOrderBy = $this->getOrderBysSql();
@@ -621,8 +609,6 @@ class BaseModel {
         }
     }
 
-    // join is not just a where param, it's a part of data structure,
-    // don't reset join param at all.. it must be set in the first dao created
     /**
      * @param $join BaseJoin
      */
@@ -750,8 +736,6 @@ abstract class BaseForm {
     public $error = false;
 
     function __construct(){
-//        if ($json)
-//        $result = json_decode(file_get_contents("php://input"));
         $result = null;
         if (strstr($_SERVER["CONTENT_TYPE"], "application/json")) $result = json_decode(file_get_contents("php://input"));
         $this->sanitizeAndRequiredCheck($result);
@@ -802,7 +786,6 @@ abstract class PaginateForm extends BaseForm {
         $this->sanitizeAndRequiredCheck(false);
         $this->validation();
     }
-
 }
 
 /**
