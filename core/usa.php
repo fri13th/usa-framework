@@ -783,8 +783,7 @@ abstract class PaginateForm extends BaseForm {
 
     function __construct(){
         $this->sanitizeRules += $this->paginateRules;
-        $this->sanitizeAndRequiredCheck(false);
-        $this->validation();
+        parent::__construct();
     }
 }
 
