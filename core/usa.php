@@ -315,12 +315,12 @@ class BaseModel {
     }
 
     public function isNotNull($column) {
-        array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " IS NOT NULL ");
+        array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " IS NOT NULL ");
         return $this;
     }
 
     public function isNull($column) {
-        array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " IS NULL ");
+        array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " IS NULL ");
         return $this;
     }
 
@@ -328,7 +328,7 @@ class BaseModel {
         if ($keyword) {
             $where = " AND (1 != 1";
             foreach ($columns as $column) {
-                $where .= " OR " . $this->vars["columns"][$column] . " LIKE '%" . $keyword . "%' ";
+                $where .= " OR " . $this->prefixedColumns[$column] . " LIKE '%" . $keyword . "%' ";
             }
             $where .= ") ";
             //$this->params["keyword"] = $keyword; // we must use pdo for preventing sql injection
