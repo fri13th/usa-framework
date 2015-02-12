@@ -510,6 +510,11 @@ class BaseModel {
         $result = $this->fetch($sql, $this->vars["params"]);        // reset variables for next use
         return $result->totalCount;
     }
+    public function selectCountReset() {
+        $totalCount = $this->selectCount();
+        $this->resetVariables();
+        return $totalCount;
+    }
 
     public function selectFieldAll($field) { // field doesn't support group by order by where... it may be changed
         $sqlFroms = $this->getFromsSql();
