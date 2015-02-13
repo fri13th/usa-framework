@@ -566,7 +566,7 @@ class BaseModel {
             }
             $params[$this->pk] = $this->{$this->pk};
 
-            $sql = "UPDATE " . $this->table . " SET " . join(", ", $sets) . " WHERE " . $this->pk . "=:" . $this->pk;
+            $sql = "UPDATE " . $this->table . " SET " . join(", ", $sets) . " WHERE " . $this->columns[$this->pk] . "=:" . $this->pk;
             $this->exec($sql, $params);
         }
         else {
@@ -589,7 +589,7 @@ class BaseModel {
     }
 
     public function delete() {
-        $sql = "DELETE " . "FROM " . $this->table . " WHERE " . $this->pk . " = :" . $this->pk;
+        $sql = "DELETE " . "FROM " . $this->table . " WHERE " . $this->columns[$this->pk] . " = :" . $this->pk;
         $this->exec($sql, array( $this->pk => $this->{$this->pk}));
     }
 
