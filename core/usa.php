@@ -287,7 +287,7 @@ class BaseModel {
     }
 
     public function whereAndBegin() {
-        array_push($this->vars["wheres"], "AND ( 1 = 1 ");
+        array_push($this->vars["wheres"], "AND ( 1 != 1 ");
         return $this;
     }
 
