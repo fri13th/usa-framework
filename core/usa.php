@@ -154,7 +154,7 @@ class UsaError {
     }
 
     private function errorPrint($no, $str, $file, $line, $traces) {
-        if ($no == E_NOTICE) return;
+        if ($no == E_NOTICE || $no == E_WARNING) return;
         $usa = getUsa();
         $error_type = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
             E_USER_WARNING => 'USER WARNING', E_USER_NOTICE => 'USER NOTICE', E_STRICT => 'STRICT',
