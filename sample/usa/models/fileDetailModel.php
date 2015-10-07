@@ -1,6 +1,6 @@
 <?php
 
-class FileDetailModel extends BaseModel {
+class UsaFileDetailModel extends BaseModel {
 
     public $seq;
     public $saveName;
