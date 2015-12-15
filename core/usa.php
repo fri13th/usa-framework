@@ -141,8 +141,8 @@ class UsaError {
         $this->errorPrint($no, $str, $file, $line, debug_backtrace());
     }
 
-    public function exceptionHandler(Exception $exception) {
-        $this->errorPrint("EXCEPTION", $exception->getMessage(), $exception->getFile(), $exception->getLine(), $exception->getTrace());
+    public function exceptionHandler($exception) {
+        $this->errorPrint(strtoupper(get_class($exception)), $exception->getMessage(), $exception->getFile(), $exception->getLine(), $exception->getTrace());
     }
 
     public function shutdownHandler() {
@@ -156,21 +156,22 @@ class UsaError {
     private function errorPrint($no, $str, $file, $line, $traces) {
         if ($no == E_NOTICE || $no == E_WARNING) return;
         $usa = getUsa();
-        $error_type = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
+        $error_types = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
             E_USER_WARNING => 'USER WARNING', E_USER_NOTICE => 'USER NOTICE', E_STRICT => 'STRICT',
             E_ERROR => 'ERROR', E_PARSE => 'PARSE', E_CORE_ERROR => 'CORE ERROR', E_CORE_WARNING => 'CORE WARNING',
             E_COMPILE_ERROR => 'COMPILE ERROR', E_COMPILE_WARNING => 'COMPILE WARNING',
             E_RECOVERABLE_ERROR => 'FATAL ERROR', "EXCEPTION" => 'EXCEPTION');
+        $error_type = $error_types[$no] ? $error_types[$no] : $no;
 
         if (!$usa->debug) return; # 404, or error we need to show some error message
         else if ($usa->config->debug_mode == "local" && $no != E_STRICT && $no != E_WARNING) {
-            error_log("[" . $error_type[$no] . "] " . $str . " at " . $file . "(" . $line . ")");
+            error_log("[" . $error_type . "] " . $str . " at " . $file . "(" . $line . ")");
             return;
         }
 
         $error = "<div style='border:1px solid #CCC;padding:10px;background:#DDD'>[" .
             //$error_type[$no], "] " . iconv("CP949", "UTF-8", $str) . " at " . $file . "(" . $line . ")<br />" .
-            $error_type[$no] . "] " . $str . " at " . $file . "(" . $line . ")<br />" .
+            $error_type . "] " . $str . " at " . $file . "(" . $line . ")<br />" .
             "<br />Trace log:<br />";
         foreach($traces as $trace) {
             if(isset($trace["file"]))
