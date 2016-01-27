@@ -292,6 +292,11 @@ class BaseModel {
         return $this;
     }
 
+    public function whereAndToOrBegin() {
+        array_push($this->vars["wheres"], "AND ( 1 = 1 ");
+        return $this;
+    }
+
     public function whereAndEnd() {
         array_push($this->vars["wheres"], ") ");
         return $this;
@@ -299,6 +304,10 @@ class BaseModel {
 
     public function whereOrBegin() {
         array_push($this->vars["wheres"], "OR ( 1 = 1 ");
+        return $this;
+    }
+    public function whereOrToAndBegin() {
+        array_push($this->vars["wheres"], "OR ( 1 != 1 ");
         return $this;
     }
 
