@@ -30,7 +30,7 @@ class UsaConfig {
         $this->db_url = "mysql:host=localhost;dbname=usagidb;charset=utf8";
         $this->db_userid = "root";
         $this->db_password = "";
-        $this->db_options = array(PDO::ATTR_PERSISTENT => false, PDO::ERRMODE_EXCEPTION);
+        $this->db_options = array(PDO::ATTR_PERSISTENT => false, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION); //, PDO::ATTR_TIMEOUT => 1 if not cli, persistent may be true
         $this->middlewares = array();
     }
 }
