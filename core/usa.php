@@ -756,11 +756,10 @@ abstract class BaseForm {
         $this->sanitizeAndRequiredCheck($result);
         $this->validation();
     }
-
     function sanitizeAndRequiredCheck($result) {
         if ($result) {
             foreach ($this->sanitizeRules as $param => $rule) {
-                $result->$param = (is_string($result->$param)) ? trim($result->$param) : $result->$param;
+                $result->$param = (is_string($result->$param)) ? stripslashes(trim($result->$param)) : $result->$param;
                 $this->$param = ($result->$param != null && $result->$param != "") ? $result->$param : $rule["default"];
                 $rule = $this->sanitizeRules[$param];
                 if ($rule["required"] && !isset($result->$param)) $this->errors[$param] = array("required");
@@ -769,7 +768,7 @@ abstract class BaseForm {
         else {
             $result = filter_var_array($_GET + $_POST, $this->sanitizeRules);
             foreach ($this->sanitizeRules as $param => $rule) {
-                $result[$param] = (is_string($result[$param])) ? trim($result[$param]) : $result[$param];
+                $result[$param] = (is_string($result[$param])) ? stripslashes(trim($result[$param])) : $result[$param];
                 $this->$param = ($result[$param] != null && $result[$param] != "") ? $result[$param] : $rule["default"];
                 $rule = $this->sanitizeRules[$param];
                 if ($rule["required"] && !isset($result[$param])) $this->errors[$param] = array("required");
