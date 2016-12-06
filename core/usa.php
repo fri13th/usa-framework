@@ -25,10 +25,10 @@ class UsaConfig {
         $this->data = array();
         $this->debug = true;
         $this->debug_mode = "local";
-        $this->db_url = "mysql:host=localhost;dbname=usa;charset=utf8";
+        $this->db_url = "mysql:host=localhost;dbname=usagidb;charset=utf8";
         $this->db_userid = "root";
         $this->db_password = "";
-        $this->db_options = array(PDO::ATTR_PERSISTENT => false);
+        $this->db_options = array(PDO::ATTR_PERSISTENT => false, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION); //, PDO::ATTR_TIMEOUT => 1 if not cli, persistent may be true
         $this->middlewares = array();
     }
 }
@@ -117,7 +117,7 @@ class Usa {
         }
         return $this->pdo;
     }
-    public function jsonResponse($jsonObj) {
+    public function jsonResponse($obj) {
         if (is_array($obj) && is_a($obj[0], "BaseModel")) $obj = json_encode(array_map(function($i){return $i->plainObject();}, $obj));
         else if (is_a($obj, "BaseModel")) $obj = $obj->json();
         else if (is_a($obj, "BasePaginate")) $obj = $obj->json();
@@ -138,8 +138,8 @@ class UsaError {
         $this->errorPrint($no, $str, $file, $line, debug_backtrace());
     }
 
-    public function exceptionHandler(Exception $exception) {
-        $this->errorPrint("EXCEPTION", $exception->getMessage(), $exception->getFile(), $exception->getLine(), $exception->getTrace());
+    public function exceptionHandler($exception) {
+        $this->errorPrint(strtoupper(get_class($exception)), $exception->getMessage(), $exception->getFile(), $exception->getLine(), $exception->getTrace());
     }
 
     public function shutdownHandler() {
@@ -151,17 +151,18 @@ class UsaError {
     }
 
     private function errorPrint($no, $str, $file, $line, $traces) {
-        if ($no == E_NOTICE) return;
+        if ($no == E_NOTICE || $no == E_WARNING) return;
         $usa = getUsa();
-        $error_type = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
+        $error_types = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
             E_USER_WARNING => 'USER WARNING', E_USER_NOTICE => 'USER NOTICE', E_STRICT => 'STRICT',
             E_ERROR => 'ERROR', E_PARSE => 'PARSE', E_CORE_ERROR => 'CORE ERROR', E_CORE_WARNING => 'CORE WARNING',
             E_COMPILE_ERROR => 'COMPILE ERROR', E_COMPILE_WARNING => 'COMPILE WARNING',
             E_RECOVERABLE_ERROR => 'FATAL ERROR', "EXCEPTION" => 'EXCEPTION');
+        $error_type = $error_types[$no] ? $error_types[$no] : $no;
 
         if (!$usa->debug) return; # 404, or error we need to show some error message
         else if ($usa->config->debug_mode == "local" && $no != E_STRICT && $no != E_WARNING) {
-            error_log("[" . $error_type[$no] . "] " . $str . " at " . $file . "(" . $line . ")");
+            error_log("[" . $error_type . "] " . $str . " at " . $file . "(" . $line . ")");
             return;
         }
 
@@ -188,30 +189,49 @@ $usaError = new UsaError();
 class BaseModel {
     public $rowNumber; // for pagination
     public $totalCount; // for pagination
-    public $joins = array();
-    public $jsonExclusives = array("pk", "jsonExclusive", "jsonIncludes", "columns", "table", "joins"); // exclude personal information field
-    public $jsonIncludes = array();
 
     protected $pdo;
     /** @var $statement PDOStatement */
     protected $statement;
     protected $dbType;
+    protected $paramSuffix;
+
+    protected $jsonExclusives = array("pdo", "statement", "dbType", "paramSuffix", "jsonExclusive", "jsonIncludes", "table", "pk",
+        "columns", "prefixedColumns", "insertDateField", "updateDateField", "vars", "varsPrev", "joins"); // exclude model specific fields
+    protected $jsonIncludes = array();
 
     protected $table; // we don't use foreign key, use pure sql when you need it
     protected $pk;
     protected $columns = array();
+    protected $prefixedColumns = array();
 
     protected $insertDateField = "";
     protected $updateDateField = "";
 
-
     protected $vars = array();
     protected $varsPrev = array(); // save prev variables, so don't reset
+    /** @var BaseJoin[]  */
+    protected $joins = array();
 
+    private function initVars() {
+        $this->vars = array(
+            "fields" => array(), // custom fields (max(*) as maxVal, )
+            "wheres" => array(),
+            "orderBys" => array(),
+            "groupBys" => array(),
+            "limit" => array(),
+            "params" => array(),
+            "joins" => array(),
+        );
+    }
 
     function __construct() {
         /** $usa Usa */$usa = getUsa();
         $this->pdo = $usa->getPdo();
+        $this->paramSuffix = 0;
+        foreach($this->columns as $key => $val) {
+            $this->prefixedColumns[$key] = "a." . $val;
+        }
         $this->initVars();
     }
 
@@ -262,8 +282,27 @@ class BaseModel {
         return $this->pdo->rollBack();
     }
 
+    public function whereAndBegin() {
+        array_push($this->vars["wheres"], "AND ( 1 != 1 ");
+        return $this;
+    }
+
+    public function whereAndToOrBegin() {
+        array_push($this->vars["wheres"], "AND ( 1 = 1 ");
+        return $this;
+    }
+
+    public function whereAndEnd() {
+        array_push($this->vars["wheres"], ") ");
+        return $this;
+    }
+
     public function whereOrBegin() {
         array_push($this->vars["wheres"], "OR ( 1 = 1 ");
+        return $this;
+    }
+    public function whereOrToAndBegin() {
+        array_push($this->vars["wheres"], "OR ( 1 != 1 ");
         return $this;
     }
 
@@ -281,17 +320,12 @@ class BaseModel {
     }
 
     public function isNotNull($column) {
-        array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " IS NOT NULL ");
+        array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " IS NOT NULL ");
         return $this;
     }
 
     public function isNull($column) {
-        array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " IS NULL ");
-        return $this;
-    }
-
-    public function field($field) {
-        array_push($this->vars["fields"], $field);
+        array_push($this->vars["wheres"], " AND " . $this->prefixedColumns[$column] . " IS NULL ");
         return $this;
     }
 
@@ -299,7 +333,7 @@ class BaseModel {
         if ($keyword) {
             $where = " AND (1 != 1";
             foreach ($columns as $column) {
-                $where .= " OR " . $this->vars["columns"][$column] . " LIKE '%" . $keyword . "%' ";
+                $where .= " OR " . $this->prefixedColumns[$column] . " LIKE '%" . $keyword . "%' ";
             }
             $where .= ") ";
             array_push($this->vars["wheres"], $where);
@@ -308,22 +342,28 @@ class BaseModel {
     }
 
     public function where($column, $comparator, $value, $static = false) {
+        $this->paramSuffix++;
+        $valueKey = $column . "___" . $this->paramSuffix;
         if ($comparator == "IN" || $comparator == "IS" || $static) {
-            array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " $comparator " . $value);
+            array_push($this->vars["wheres"], " AND " . $this->getPrefixedColumn($column) . " " . $comparator . " " . $this->getPrefixedColumn($value));
         }
         else {
-            array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " " . $comparator . " :" . $column);
-            $this->vars["params"][$column] = $value; // we must use pdo for preventing sql injection
+            array_push($this->vars["wheres"], " AND " . $this->getPrefixedColumn($column) . " " . $comparator . " :" . $valueKey);
+            $this->vars["params"][$valueKey] = $value; // we must use pdo for preventing sql injection
         }
         return $this;
     }
+
+    private function getPrefixedColumn($column) {
+        return $this->prefixedColumns[$column] ? $this->prefixedColumns[$column] : $column;
+    }
     public function orderBy($column, $order = "DESC") {
-        array_push($this->vars["orderBys"], array($this->vars["columns"][$column], $order));
+        array_push($this->vars["orderBys"], array($this->getPrefixedColumn($column), $order));
         return $this;
     }
 
     public function groupBy($column) {
-        array_push($this->vars["orderBys"], $this->vars["columns"][$column]);
+        array_push($this->vars["groupBys"], $this->getPrefixedColumn($column));
         return $this;
     }
 
@@ -332,33 +372,36 @@ class BaseModel {
         return $this;
     }
 
-
     private function getFromsSql(){
-        $sqlFroms = array($this->table . " as a");
-        // TODO: add JOIN & ON
+        $sqlFroms = array($this->table . " as a ");
+        if (count($this->joins) > 0) {
+            foreach($this->joins as $join) {
+                $ons = array();
+                foreach ($join->conditions as $cond) {
+                    array_push($ons, $this->getPrefixedColumn($cond[0]) . " " . $cond[1] . " " . $this->getPrefixedColumn($cond[2]));
+                }
+                array_push($sqlFroms, $join->joinType . " JOIN " . $join->table . " AS " . $join->prefix . " ON " . join(" AND ", $ons));
+            }
+        }
         return join(" ", $sqlFroms);
     }
+
     private function getColumnsSql() {
         $sqlColumns = array();
         $columns = array();
         if ($this->vars["fields"]) array_push($sqlColumns, join(", ", $this->vars["fields"]));
-        foreach ($this->columns as $key => $val) {
-            array_push($this->vars["columns"], array($key => "a." . $val));
-            array_push($columns, "a." . $val . " as " . $key);
+        foreach ($this->prefixedColumns as $key => $val) {
+            array_push($columns, $val . " AS " . $key);
         }
+
         array_push($sqlColumns, join(", ", $columns));
-        // TODO: add joined columns
         return join(", ", $sqlColumns);
     }
 
     private function getGroupBysSql() {
         $sql = "";
         if (sizeof($this->vars["groupBys"]) > 0) { // group by doesn't require prefix
-            $groupBys = array();
-            foreach ($this->vars["groupBys"] as $groupBy) {
-                array_push($groupBys, join(" " , $groupBy));
-            }
-            $sql = " GROUP BY " . join(", ", $groupBys);
+            $sql = " GROUP BY " . join(", ", $this->vars["groupBys"]);
         }
         return $sql;
     }
@@ -408,24 +451,9 @@ class BaseModel {
         return $sql;
     }
 
-    private function resetVariables()
-    {
+    private function resetVariables() {
         $this->varsPrev = $this->vars;
         $this->initVars();
-    }
-
-    private function initVars() {
-        $this->vars = array(
-            "fields" => array(), // custom fields (max(*) as maxVal, )
-            "columns" => array(), // mapping columns and names (rid => a.id)
-            "wheres" => array(),
-            "orderBys" => array(),
-//            "orderBysMSSQL" => array(),
-            "groupBys" => array(),
-            "limit" => array(),
-            "params" => array(),
-            "joins" => array(),
-        );
     }
 
     public function paginateMultiple(BasePaginate $paginate){ // TODO: obsolete
@@ -468,16 +496,30 @@ class BaseModel {
         $result = $this->fetch($sql, $this->vars["params"]);        // reset variables for next use
         return $result->totalCount;
     }
-
-    public function selectOnlyField($field) { // selectOnlyField("region_1 AS region, COUNT(region_1) AS totalCount")
-        // select
-        $list = $this->selectAll();
-        return $list;
+    public function selectCountReset() {
+        $totalCount = $this->selectCount();
+        $this->resetVariables();
+        return $totalCount;
     }
 
+    public function selectFieldAll($field) { // field doesn't support group by order by where... it may be changed
+        $sqlFroms = $this->getFromsSql();
+        $sqlGroupBy = $this->getGroupBysSql();
+        $sqlOrderBy = $this->getOrderBysSql();
+        $sqlWhere = $this->getWheresSql();
+        $sqlLimit = $this->getLimitSql();
+
+        $sql = "SELECT " . $field . " FROM " . $sqlFroms . $sqlWhere . $sqlGroupBy . $sqlOrderBy . $sqlLimit;
+        $result = $this->fetchAll($sql, $this->vars["params"]);        // reset variables for next use
+        $this->resetVariables();
+        return $result;
+    }
+
+    /**
+     * @return BaseModel[]
+     */
     public function selectAll() {
         $sql = $this->generateSelectSql();
-        echo $sql;
         $results = $this->fetchAll($sql, $this->vars["params"]);        // reset variables for next use
         $this->resetVariables();
         return $results;
@@ -510,7 +552,7 @@ class BaseModel {
             }
             $params[$this->pk] = $this->{$this->pk};
 
-            $sql = "UPDATE " . $this->table . " SET " . join(", ", $sets) . " WHERE " . $this->pk . "=:" . $this->pk;
+            $sql = "UPDATE " . $this->table . " SET " . join(", ", $sets) . " WHERE " . $this->columns[$this->pk] . "=:" . $this->pk;
             $this->exec($sql, $params);
         }
         else {
@@ -524,7 +566,7 @@ class BaseModel {
                 }
             }
             $sql = "INSERT " . "INTO "  . $this->table . " (" . join(", ", $columns). ") VALUES (" . join(", ", $values). ")";
-            error_log($sql);
+            #error_log($sql);
             #error_log(join(", ", $params));
             $this->exec($sql, $params);
             if ($this->pk) $this->{$this->pk} = $this->lastInsertId($this->pk);
@@ -533,7 +575,7 @@ class BaseModel {
     }
 
     public function delete() {
-        $sql = "DELETE " . "FROM " . $this->table . " WHERE " . $this->pk . " = :" . $this->pk;
+        $sql = "DELETE " . "FROM " . $this->table . " WHERE " . $this->columns[$this->pk] . " = :" . $this->pk;
         $this->exec($sql, array( $this->pk => $this->{$this->pk}));
     }
 
@@ -543,7 +585,7 @@ class BaseModel {
 
     public function plainObject() {
         $obj = array();
-        $columns = $this->columns + $this->jsonIncludes;
+        $columns = $this->prefixedColumns + $this->jsonIncludes;
         foreach ($columns as $key => $value) {
             if (!in_array($key, $this->jsonExclusives)) $obj[$key] = $this->$key;
         }
@@ -553,15 +595,21 @@ class BaseModel {
     public function keyword($keyword){} // almost abstract
 
     public function copy($obj){
-        foreach ($this->columns as $key => $val) {
+        foreach ($this->prefixedColumns as $key => $val) {
             if (property_exists($obj, $key)) $this->$key = $obj->$key;
         }
     }
 
-    // join is not just a where param, it's a part of data structure,
-    // don't reset join param at all.. it must be set in the first dao created
+    /**
+     * @param $join BaseJoin
+     * @return BaseJoin
+     */
     public function join($join){
+        foreach ($join->columns as $key => $val) {
+            $this->prefixedColumns[$key] = $join->prefix . "." . $val;
+        }
         array_push($this->joins, $join);
+        return $this;
     }
 
 }
@@ -573,16 +621,26 @@ class BaseJoin {
     public $columns = array();
     public $conditions = array();
 
-    public function __construct($joinType, $prefix, $table, $columns, $onEqConditions = null) {
+    public function __construct($joinType, $prefix, $table, $columns, $onEqConds = null) {
         $this->joinType = $joinType;
         $this->prefix = $prefix;
         $this->table = $table;
         $this->columns = $columns;
-        if ($onEqConditions) $this->conditions = array($onEqConditions[0], "=", $onEqConditions[1]);
+        foreach($this->columns as $key => $val) {
+            $this->prefixedColumns[$key] = $this->prefix . "." . $val;
+        }
+
+        if ($onEqConds) $this->onEq($onEqConds[0], $onEqConds[1]);
+    }
+
+    public function onEq($cond1, $cond2) {
+        $this->on($cond1, "=", $cond2);
+        return $this;
     }
 
     public function on($cond1, $comparator,  $cond2) {
         array_push($this->conditions, array($cond1, $comparator, $cond2));
+        return $this;
     }
 
 }
@@ -671,13 +729,13 @@ abstract class BaseForm {
 
     function __construct(){
         $results = null;
-        if (strstr($_SERVER["CONTENT_TYPE"], "application/json")) $results = json_decode(file_get_contents("php://input"));
+        if (strstr($_SERVER["CONTENT_TYPE"], "application/json")) $results = (array)json_decode(file_get_contents("php://input"));
+        if (!$results) $results = filter_var_array($_GET + $_POST, $this->sanitizeRules);
         $this->sanitizeAndRequiredCheck($results);
         $this->validation();
     }
 
     function sanitizeAndRequiredCheck($results) {
-        $results = ($results) ? (array)$results : filter_var_array($_GET + $_POST, $this->sanitizeRules);
         foreach ($this->sanitizeRules as $param => $rule) {
             $results[$param] = (is_string($results[$param])) ? trim($results[$param]) : $results[$param];
             $this->$param = ($results[$param] != null && $results[$param] != "") ? $results[$param] : $rule["default"];
