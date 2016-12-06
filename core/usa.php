@@ -12,7 +12,6 @@ class UsaConfig {
     public $debug_mode;
     public $locale;
     public $encoding;
-    public $db_type;
     public $db_url;
     public $db_userid;
     public $db_password;
@@ -23,7 +22,6 @@ class UsaConfig {
 
     function __construct() {
         $this->domain = filter_input(INPUT_SERVER, "HTTP_HOST");
-        $this->db_type = "mysql";
         $this->data = array();
         $this->debug = true;
         $this->debug_mode = "local";
@@ -55,7 +53,6 @@ class Usa {
 
     /* start */
     function __construct(UsaConfig $config) {
-        //error_log($_SERVER["PHP_SELF"]);
         $this->config = $config;
         $this->debug = $config->debug;
         if (!isset($_SESSION["session.usa"])) $_SESSION["session.usa"]["username"] = "Guest";
@@ -169,7 +166,6 @@ class UsaError {
         }
 
         $error = "<div style='border:1px solid #CCC;padding:10px;background:#DDD'>[" .
-            //$error_type[$no], "] " . iconv("CP949", "UTF-8", $str) . " at " . $file . "(" . $line . ")<br />" .
             $error_type[$no] . "] " . $str . " at " . $file . "(" . $line . ")<br />" .
             "<br />Trace log:<br />";
         foreach($traces as $trace) {
@@ -212,18 +208,10 @@ class BaseModel {
     protected $vars = array();
     protected $varsPrev = array(); // save prev variables, so don't reset
 
-//    protected $fields = array();
-//    protected $wheres = array();
-//    protected $orderBys = array();
-//    protected $orderBysMSSQL = array();
-//    protected $groupBys = array();
-//    protected $limit = array();
-//    protected $params = array();
 
     function __construct() {
         /** $usa Usa */$usa = getUsa();
         $this->pdo = $usa->getPdo();
-        $this->dbType = $usa->config->db_type;
         $this->initVars();
     }
 
@@ -314,16 +302,13 @@ class BaseModel {
                 $where .= " OR " . $this->vars["columns"][$column] . " LIKE '%" . $keyword . "%' ";
             }
             $where .= ") ";
-            //$this->params["keyword"] = $keyword; // we must use pdo for preventing sql injection
             array_push($this->vars["wheres"], $where);
         }
         return $this;
     }
 
     public function where($column, $comparator, $value, $static = false) {
-        // if $comparator is IN
         if ($comparator == "IN" || $comparator == "IS" || $static) {
-            if ($this->dbType == "mssql" && $value == "NOW()") $value = "GETDATE()";
             array_push($this->vars["wheres"], " AND " . $this->vars["columns"][$column] . " $comparator " . $value);
         }
         else {
@@ -333,7 +318,6 @@ class BaseModel {
         return $this;
     }
     public function orderBy($column, $order = "DESC") {
-        array_push($this->vars["orderBysMSSQL"], array($column, $order));
         array_push($this->vars["orderBys"], array($this->vars["columns"][$column], $order));
         return $this;
     }
@@ -381,18 +365,12 @@ class BaseModel {
 
     private function getOrderBysSql() {
         $sqlOrderBy = "";
-        $sqlOrderByMSSQL = "";
         if (sizeof($this->vars["orderBys"]) > 0) { // order by doesn't require prefix
             $orderBys = array();
-            $orderBysMSSQL = array();
             foreach ($this->vars["orderBys"] as $orderBy) {
                 array_push($orderBys, join(" " , $orderBy));
             }
-            foreach ($this->vars["orderBysMSSQL"] as $orderBy) {
-                array_push($orderBysMSSQL, join(" " , $orderBy));
-            }
             $sqlOrderBy = " ORDER BY " . join(", ", $orderBys);
-            $sqlOrderByMSSQL = " ORDER BY " . join(", ", $orderBysMSSQL);
         }
         return $sqlOrderBy;
     }
@@ -407,22 +385,8 @@ class BaseModel {
 
     private function getLimitSql() {
         $sqlLimit = "";
-//        $selectTop = "";
         if (sizeof($this->vars["limit"]) > 0) { // only for sql server 2012+
-            if ($this->dbType == "mysql") $sqlLimit = " LIMIT " . $this->vars["limit"][0] . ", " . $this->vars["limit"][1];
-//            else if ($this->dbType == "mssql") { // not tested from modified
-//                if ($this->vars["limit"][0] == 0) {
-//                    $selectTop = "TOP " . $this->vars["limit"][1] . " ";
-//                }
-//                else {
-//                    if (!$sqlOrderBy) $sqlOrderBy = " ORDER BY " . $this->pk . " DESC ";
-//                    $sql = "SELECT TOP {$this->vars["limit"][1]} * FROM (SELECT ROW_NUMBER() OVER ($sqlOrderBy) AS rowNumber," .
-//                        $sqlColumns . " FROM " . join(" ", $sqlFroms) . $sqlWhere .
-//                        ") _tmpInlineView WHERE rowNumber > {$this->vars["limit"][0]} " . $sqlGroupBy . $sqlOrderByMSSQL;
-//                    //$sqlLimit = " OFFSET " . $this->limit[0] . " ROWS FETCH NEXT " . $this->limit[1] . " ROWS ONLY";
-//                    return $sql;
-//                }
-//            }
+            $sqlLimit = " LIMIT " . $this->vars["limit"][0] . ", " . $this->vars["limit"][1];
         }
         return $sqlLimit;
 
@@ -456,7 +420,7 @@ class BaseModel {
             "columns" => array(), // mapping columns and names (rid => a.id)
             "wheres" => array(),
             "orderBys" => array(),
-            "orderBysMSSQL" => array(),
+//            "orderBysMSSQL" => array(),
             "groupBys" => array(),
             "limit" => array(),
             "params" => array(),
@@ -486,7 +450,6 @@ class BaseModel {
     }
 
     /**
-     * @param null $column
      * @return BaseModel
      */
     public function select() {
@@ -496,7 +459,6 @@ class BaseModel {
         return $results;
     }
     /**
-     * @param null $column
      * @return BaseModel
      */
     public function selectCount() {
@@ -540,7 +502,7 @@ class BaseModel {
         if ($this->pk && $this->{$this->pk}) { // update
             foreach ($this->columns as $column => $original_column) {
                 if ($column == $this->pk) continue;
-                if ($column == $this->updateDateField) array_push($sets, $original_column . (($this->dbType == "mssql") ? "=GETDATE()" : "=NOW()"));
+                if ($column == $this->updateDateField) array_push($sets, $original_column . "=NOW()");
                 else {
                     array_push($sets, $original_column . "=:" . $column);
                     $params[$column] = $this->{$column};
@@ -555,7 +517,7 @@ class BaseModel {
             foreach ($this->columns as $column => $original_column) {
                 if ($column == $this->pk || is_null($this->{$column}) && $column != $this->insertDateField) continue;
                 array_push($columns, $original_column);
-                if ($column == $this->insertDateField) array_push($values, (($this->dbType == "mssql") ? "GETDATE()" : "NOW()"));
+                if ($column == $this->insertDateField) array_push($values, "NOW()");
                 else {
                     array_push($values, ":" . $column);
                     $params[$column] = $this->{$column};
@@ -599,9 +561,7 @@ class BaseModel {
     // join is not just a where param, it's a part of data structure,
     // don't reset join param at all.. it must be set in the first dao created
     public function join($join){
-
         array_push($this->joins, $join);
-
     }
 
 }
@@ -710,33 +670,20 @@ abstract class BaseForm {
     public $error = false;
 
     function __construct(){
-//        if ($json)
-//        $result = json_decode(file_get_contents("php://input"));
-        $result = null;
-        if (strstr($_SERVER["CONTENT_TYPE"], "application/json")) $result = json_decode(file_get_contents("php://input"));
-        $this->sanitizeAndRequiredCheck($result);
+        $results = null;
+        if (strstr($_SERVER["CONTENT_TYPE"], "application/json")) $results = json_decode(file_get_contents("php://input"));
+        $this->sanitizeAndRequiredCheck($results);
         $this->validation();
     }
 
-    function sanitizeAndRequiredCheck($result) {
-        if ($result) {
-            foreach ($this->sanitizeRules as $param => $rule) {
-                $result->$param = (is_string($result->$param)) ? trim($result->$param) : $result->$param;
-                $this->$param = ($result->$param != null && $result->$param != "") ? $result->$param : $rule["default"];
-                $rule = $this->sanitizeRules[$param];
-                if ($rule["required"] && !isset($result->$param)) $this->errors[$param] = array("required");
-            }
+    function sanitizeAndRequiredCheck($results) {
+        $results = ($results) ? (array)$results : filter_var_array($_GET + $_POST, $this->sanitizeRules);
+        foreach ($this->sanitizeRules as $param => $rule) {
+            $results[$param] = (is_string($results[$param])) ? trim($results[$param]) : $results[$param];
+            $this->$param = ($results[$param] != null && $results[$param] != "") ? $results[$param] : $rule["default"];
+            $rule = $this->sanitizeRules[$param];
+            if ($rule["required"] && !isset($results[$param])) $this->errors[$param] = array("required");
         }
-        else {
-            $result = filter_var_array($_GET + $_POST, $this->sanitizeRules);
-            foreach ($this->sanitizeRules as $param => $rule) {
-                $result[$param] = (is_string($result[$param])) ? trim($result[$param]) : $result[$param];
-                $this->$param = ($result[$param] != null && $result[$param] != "") ? $result[$param] : $rule["default"];
-                $rule = $this->sanitizeRules[$param];
-                if ($rule["required"] && !isset($result[$param])) $this->errors[$param] = array("required");
-            }
-        }
-        $this->error = (count($this->errors) > 0);
     }
 
     function addError($param, $errorCode, $message){
@@ -759,10 +706,8 @@ abstract class PaginateForm extends BaseForm {
 
     function __construct(){
         $this->sanitizeRules += $this->paginateRules;
-        $this->sanitizeAndRequiredCheck(false);
-        $this->validation();
+        parent::__construct();
     }
-
 }
 
 /**
