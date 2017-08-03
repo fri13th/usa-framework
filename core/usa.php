@@ -127,62 +127,6 @@ class Usa {
     }
 }
 
-class UsaError {
-    function __construct() {
-        set_error_handler(array($this, 'errorHandler'));
-        set_exception_handler(array($this, 'exceptionHandler'));
-        register_shutdown_function(array($this, 'shutdownHandler'));
-    }
-
-    public function errorHandler($no, $str, $file, $line){
-        $this->errorPrint($no, $str, $file, $line, debug_backtrace());
-    }
-
-    public function exceptionHandler($exception) {
-        $this->errorPrint(strtoupper(get_class($exception)), $exception->getMessage(), $exception->getFile(), $exception->getLine(), $exception->getTrace());
-    }
-
-    public function shutdownHandler() {
-        if ($error = error_get_last()){
-            if ($error['type'] & (E_ERROR | E_PARSE | E_CORE_ERROR | E_CORE_WARNING | E_COMPILE_ERROR | E_COMPILE_WARNING)) {
-                $this->errorPrint($error['type'], $error['message'], $error['file'], $error['line'], debug_backtrace());
-            }
-        }
-    }
-
-    private function errorPrint($no, $str, $file, $line, $traces) {
-        if ($no == E_NOTICE || $no == E_WARNING) return;
-        $usa = getUsa();
-        $error_types = array(E_WARNING=>'WARNING', E_NOTICE => 'NOTICE', E_USER_ERROR => 'USER ERROR',
-            E_USER_WARNING => 'USER WARNING', E_USER_NOTICE => 'USER NOTICE', E_STRICT => 'STRICT',
-            E_ERROR => 'ERROR', E_PARSE => 'PARSE', E_CORE_ERROR => 'CORE ERROR', E_CORE_WARNING => 'CORE WARNING',
-            E_COMPILE_ERROR => 'COMPILE ERROR', E_COMPILE_WARNING => 'COMPILE WARNING',
-            E_RECOVERABLE_ERROR => 'FATAL ERROR', "EXCEPTION" => 'EXCEPTION');
-        $error_type = $error_types[$no] ? $error_types[$no] : $no;
-
-        if (!$usa->debug) return; # 404, or error we need to show some error message
-        else if ($usa->config->debug_mode == "local" && $no != E_STRICT && $no != E_WARNING) {
-            error_log("[" . $error_type . "] " . $str . " at " . $file . "(" . $line . ")");
-            return;
-        }
-
-        $error = "<div style='border:1px solid #CCC;padding:10px;background:#DDD'>[" .
-            $error_type[$no] . "] " . $str . " at " . $file . "(" . $line . ")<br />" .
-            "<br />Trace log:<br />";
-        foreach($traces as $trace) {
-            if(isset($trace["file"]))
-                $error .= "[" . $trace["file"] . "(" . $trace["line"] . ")] ";
-            if (isset($trace["class"]))
-                $error .= $trace["class"] . "::";
-            $error .= $trace["function"] . "<br />";
-        }
-        $error .= "</div>";
-        echo $error;
-    }
-}
-$usaError = new UsaError();
-
-
 /**
  * DB and model
  */
@@ -234,28 +178,40 @@ class BaseModel {
         }
         $this->initVars();
     }
+    
+    private function terminate(PDOException $e) {
+        header('Content-Type: text/plain; charset=UTF-8', true, 500);
+        exit($e->getMessage());
+    }
 
     public function fetch($sql, $params) {
-        $this->statement = $this->pdo->prepare($sql);
-        $this->statement->setFetchMode(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE, get_class($this));
-        $this->statement->execute($params);
-        $row = $this->statement->fetch();
-        $this->statement->closeCursor();
-        return $row;
+        try {
+            $rows = $this->fetchAll($sql, $params);
+            return (is_array($rows) && (count($rows) > 0)) ? $rows[0] : $rows;
+        } catch (PDOException $e) {
+            $this->terminate($e);
+        }
     }
 
     public function fetchAll($sql, $params) {
-        $this->statement = $this->pdo->prepare($sql);
-        $this->statement->setFetchMode(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE, get_class($this));
-        $this->statement->execute($params);
-        $rows = $this->statement->fetchAll();
-        $this->statement->closeCursor();
-        return $rows;
+        try {
+            $this->statement = $this->pdo->prepare($sql);
+            $this->statement->setFetchMode(PDO::FETCH_CLASS|PDO::FETCH_PROPS_LATE, get_class($this));
+            $this->statement->execute($params);
+            $rows = $this->statement->fetchAll();
+            return $rows;
+        } catch (PDOException $e) {
+            $this->terminate($e);
+        }
     }
 
     public function exec($sql, $params) {
-        $this->statement = $this->pdo->prepare($sql);
-        return $this->statement->execute($params);
+        try {
+            $this->statement = $this->pdo->prepare($sql);
+            return $this->statement->execute($params);
+        } catch (PDOException $e) {
+            $this->terminate($e);
+        }
     }
 
     public function lastInsertId($name) {
@@ -720,7 +676,9 @@ abstract class BasePaginate { // provide improved pagination
 
 /**
  * sanitize and validate inputs.
- * we don't use php filter validation.
+ * this code has some problem in multiple dimension parameter
+ *
+ * * we don't use php filter validation.
  */
 abstract class BaseForm {
     public $sanitizeRules = array();
