@@ -11,6 +11,9 @@ This framework supports all kind of modern web features like  MVC, ORM, REST API
 
 This framework will help you to focus on good web application, not framework itself.
 
+===================================
 
+2018/01/25 
+Please check [ling-framework](https://github.com/ling-framework "ling-framework"), it is almost legacy-free and supports composer.
 
 
